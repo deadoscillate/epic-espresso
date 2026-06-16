@@ -3,8 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin · Espresso Bar</title>
-    <meta name="description" content="Control panel for the espresso bar status board." />
+    <title>Admin · Epic Espresso Bar</title>
+    <meta name="description" content="Staff control panel for the Epic Espresso Bar." />
+
+    <link rel="icon" href="/assets/img/favicon-32.png" sizes="32x32" />
+    <link rel="icon" href="/assets/img/epic-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+    <link rel="manifest" href="/admin/manifest.webmanifest" />
+    <meta name="theme-color" content="#173a5e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Espresso Admin" />
+
     <link rel="stylesheet" href="../assets/css/base.css" />
     <link rel="stylesheet" href="../assets/css/admin.css" />
   </head>
@@ -19,11 +30,14 @@
       </header>
 
       <div class="admin__head">
-        <h1 class="brand">Espresso Bar — Admin</h1>
-        <p class="tagline">
-          Set the current coffee status. Changes appear on the warehouse display
-          instantly.
-        </p>
+        <img class="admin__mark" src="/assets/img/epic-icon.svg" alt="" width="52" height="52" />
+        <div>
+          <h1 class="brand">Espresso Bar — Admin</h1>
+          <p class="tagline">
+            Set the current coffee status. Changes appear on the status board
+            instantly.
+          </p>
+        </div>
       </div>
 
       <!-- Currently live summary -->
@@ -73,6 +87,25 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <!-- PIN gate (shown in live mode until unlocked) -->
+    <div class="pin-gate" id="pin-gate" hidden>
+      <form class="pin-card" id="pin-form">
+        <img src="/assets/img/epic-icon.svg" alt="" width="56" height="56" />
+        <h2>Staff access</h2>
+        <p>Enter the espresso bar PIN to make changes.</p>
+        <input
+          id="pin-input"
+          type="password"
+          inputmode="numeric"
+          autocomplete="current-password"
+          aria-label="Admin PIN"
+          placeholder="PIN"
+        />
+        <button type="submit" class="btn btn-primary">Unlock</button>
+        <p class="pin-error" id="pin-error" role="alert"></p>
+      </form>
+    </div>
 
     <script type="module" src="../assets/js/admin.js"></script>
   </body>

@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 // Fullscreen warehouse display
 // -----------------------------------------------------------------------------
+import "./pwa.js";
 import { createCoffeeStore } from "./store.js";
 import { getStatus } from "./statuses.js";
 import { formatClock, formatRelative, renderConnection } from "./util.js";
@@ -15,6 +16,7 @@ const els = {
   updatedRel: document.getElementById("updated-rel"),
   connection: document.getElementById("connection"),
   fullscreenBtn: document.getElementById("fullscreen-btn"),
+  themeMeta: document.querySelector('meta[name="theme-color"]'),
 };
 
 let liveState = null;
@@ -29,20 +31,24 @@ function render(state) {
   els.message.textContent = state.message || status.tagline;
   els.updatedAbs.textContent = formatClock(state.updatedAt);
   els.updatedRel.textContent = formatRelative(state.updatedAt);
+
+  // Match the browser/standalone status bar to the active status colour.
+  if (els.themeMeta) {
+    const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim();
+    if (accent) els.themeMeta.setAttribute("content", accent);
+  }
 }
 
 // --- Fullscreen + keep-awake (kiosk niceties) -------------------------------
 let wakeLock = null;
-
 async function requestWakeLock() {
   if (!("wakeLock" in navigator)) return;
   try {
     wakeLock = await navigator.wakeLock.request("screen");
   } catch {
-    /* Wake Lock needs HTTPS + a visible page; ignore if unavailable. */
+    /* needs HTTPS + a visible page; ignore if unavailable */
   }
 }
-
 async function toggleFullscreen() {
   try {
     if (document.fullscreenElement) {
@@ -52,16 +58,13 @@ async function toggleFullscreen() {
       requestWakeLock();
     }
   } catch (err) {
-    console.error("[display] Fullscreen request failed:", err);
+    console.error("[display] fullscreen failed:", err);
   }
 }
-
 els.fullscreenBtn.addEventListener("click", toggleFullscreen);
 document.addEventListener("fullscreenchange", () => {
   els.fullscreenBtn.setAttribute("aria-pressed", String(Boolean(document.fullscreenElement)));
 });
-
-// Re-acquire the wake lock if the tab was hidden (OS releases it automatically).
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && document.fullscreenElement) requestWakeLock();
 });
@@ -70,7 +73,6 @@ document.addEventListener("visibilitychange", () => {
 store.onConnection((conn) => renderConnection(els.connection, conn));
 store.onChange(render);
 
-// Live updates come from the store; this just keeps the relative time fresh.
 setInterval(() => {
   if (liveState) els.updatedRel.textContent = formatRelative(liveState.updatedAt);
 }, 15000);

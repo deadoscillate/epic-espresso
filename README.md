@@ -1,244 +1,170 @@
-# ☕ The Brendan Spurlock Memorial Espresso Bar
+# ☕ Epic Espresso Bar — Coffee Status Board
 
-The official web app / status tracker for the **Epic IT Service Desk Espresso Bar**.
+The official web app / status tracker for the **Epic Espresso Bar** ("The
+Brendan Spurlock Memorial Espresso Bar").
 
-A lightweight, browser-based coffee-status sign. Baristas set the current status
-from a phone or laptop (`/admin`); a warehouse tablet or monitor shows it
-fullscreen (`/display`). No native app, no install — just static HTML, CSS, and
-JavaScript.
+A lightweight, installable status sign. Staff set the current coffee status from
+a phone (the **Admin** app); a warehouse tablet or monitor shows it on the
+**Status board**. It runs entirely on **Vercel** — a static front-end plus one
+tiny serverless function backed by **Vercel KV** — and installs on iOS and
+Android as a **PWA** (Add to Home Screen). No Firebase, no app stores, and
+**nothing to install or run on your own computer.**
 
-| Page       | What it is                                                        |
-| ---------- | ----------------------------------------------------------------- |
-| `/`        | Landing page with links to Admin and Display + a live status chip |
-| `/admin`   | Control panel: big status buttons + optional custom message       |
-| `/display` | Fullscreen, read-from-a-distance status board for the warehouse   |
+| Page         | URL        | Who                                                  |
+| ------------ | ---------- | ---------------------------------------------------- |
+| Status board | `/display` | Everyone — public, read-only, kiosk/phone            |
+| Admin        | `/admin`   | Staff only — **PIN-protected**, on a separate deploy |
+| Landing      | `/`        | Links + a live status chip                           |
 
 Statuses: **Brewing · Ready · Empty · Cleaning · Closed · Beans Low · Maintenance**,
-each with its own icon, default message, and visual theme.
+each with its own icon, default message, and full-screen theme.
 
 ---
 
-## Table of contents
+## Contents
 
 - [How it works](#how-it-works)
-- [Run it locally](#run-it-locally)
-- [Demo mode vs. live sync](#demo-mode-vs-live-sync)
-- [Configure Firebase (cross-device sync)](#configure-firebase-cross-device-sync)
-- [Deploy](#deploy)
-  - [GitHub Pages](#github-pages)
-  - [Netlify](#netlify)
-  - [Vercel](#vercel)
-- [Using Admin & Display](#using-admin--display)
-- [Kiosk / fullscreen on a tablet](#kiosk--fullscreen-on-a-tablet)
+- [Deploy on Vercel (no local tools)](#deploy-on-vercel-no-local-tools)
+  - [1. Status board (public)](#1-status-board-public-project)
+  - [2. Vercel KV + admin PIN](#2-add-vercel-kv--the-admin-pin)
+  - [3. Admin (separate URL)](#3-admin-on-a-separate-url-second-project)
+- [Environment variables](#environment-variables)
+- [Install as an app (iOS / Android)](#install-as-an-app-ios--android)
+- [Using it](#using-it)
+- [Kiosk mode on a tablet](#kiosk-mode-on-a-tablet)
 - [Project structure](#project-structure)
-- [Swapping the backend (Supabase, etc.)](#swapping-the-backend-supabase-etc)
+- [Customising](#customising)
+- [Demo mode & optional local dev](#demo-mode--optional-local-dev)
 - [Future enhancements](#future-enhancements)
 
 ---
 
 ## How it works
 
-A single tiny shared state object drives everything:
+One tiny shared state object drives everything:
 
 ```jsonc
-{
-  "status": "ready",
-  "message": "Coffee is ready.",
-  "updatedAt": 1718553600000
-}
+{ "status": "ready", "message": "Coffee is ready.", "updatedAt": 1718553600000 }
 ```
 
-The admin writes it; the display subscribes and updates live. All storage goes
-through one **abstraction layer** (`assets/js/store.js`) so the UI never talks to
-a database directly. The store automatically picks a backend:
+- **Storage:** a single serverless function, `/api/status`, reads/writes that
+  object in **Vercel KV** (Redis). `GET` is public; `POST` requires the admin
+  **PIN** and is rejected entirely on the public deployment.
+- **Live updates:** the board and admin **poll** `/api/status` every few seconds
+  (Vercel has no built-in realtime push; polling is simple and reliable for a
+  status sign). The service worker never caches the API, so reads stay live.
+- **Separation:** the front-end is one codebase deployed as **two Vercel
+  projects** that share the same KV store. An `APP_ROLE` env var + a 6-line
+  Edge Middleware make the public project read-only and hide `/admin`, while the
+  admin project serves the PIN-gated panel. Two URLs, one repo, no duplication.
+- **Fallback:** if the API isn't reachable (e.g. KV not configured yet), the app
+  drops to a clearly-labelled **demo mode** (localStorage, single device).
 
-- **Firebase Realtime Database** — when you've filled in your config. True
-  cross-device, live sync. _(Recommended for real use.)_
-- **Demo mode (localStorage)** — the zero-config fallback. Works instantly, but
-  only on a **single device** (it does sync between tabs/windows on that one
-  machine). Clearly labelled in the connection indicator.
-
-Both pages show a **connection indicator** so you always know which mode you're
-in and whether you're live.
-
----
-
-## Run it locally
-
-Because the app uses native ES modules, open it through a small web server
-(not `file://`). Any static server works:
-
-```bash
-# Option A — Node (no install needed)
-npx serve .
-
-# Option B — Python 3
-python3 -m http.server 8080
-```
-
-Then visit:
-
-- `http://localhost:8080/` (landing)
-- `http://localhost:8080/admin/`
-- `http://localhost:8080/display/`
-
-Out of the box it runs in **demo mode** — open `/admin/` and `/display/` in two
-tabs of the same browser and watch them sync.
+All of this is wired through one abstraction — `assets/js/store.js` — so the UI
+never talks to the backend directly.
 
 ---
 
-## Demo mode vs. live sync
+## Deploy on Vercel (no local tools)
 
-| | Demo mode (default) | Firebase (configured) |
-| --- | --- | --- |
-| Setup | None | ~5 minutes |
-| Syncs across devices | ❌ single device only | ✅ yes |
-| Syncs across tabs (same device) | ✅ | ✅ |
-| Good for | Trying it out, local demos | Real espresso-bar use |
+Everything below is done in the **Vercel dashboard** and the **GitHub**
+website. You don't need Node, the Vercel CLI, or anything on your machine.
 
-> **Important:** the admin (phone) and the warehouse display are different
-> devices, so for real use you need Firebase. Demo mode is purely a
-> zero-config fallback for evaluation.
+### 1. Status board (public project)
 
----
+1. Push this repo to GitHub (already done if you're reading this there).
+2. [vercel.com](https://vercel.com) → **Add New → Project → Import Git
+   Repository** → pick this repo (grant the Vercel GitHub app access).
+3. **Framework Preset: Other**, **Root Directory: `./`**. Leave Build & Output
+   empty. **Deploy.** You now have `https://<project>.vercel.app`.
 
-## Configure Firebase (cross-device sync)
+### 2. Add Vercel KV + the admin PIN
 
-Firebase **web** config values are *not* secret — they're meant to ship in
-client code, and access is controlled by database security rules. They live in
-`assets/js/config.js` so you can swap projects without touching app logic.
+1. In the project → **Storage → Create Database → KV (Redis)** (a.k.a. Upstash
+   Redis from the Marketplace). Accept the free plan and **Connect** it to this
+   project. This injects `KV_REST_API_URL` / `KV_REST_API_TOKEN` automatically.
+2. Project → **Settings → Environment Variables**, add:
+   - `ADMIN_PIN` = your chosen passcode (e.g. `4827`)
+   - `APP_ROLE` = `public`  ← makes this deployment read-only and hides `/admin`
+3. **Redeploy** (Deployments → ⋯ → Redeploy) so the new env vars take effect.
 
-**1. Create a project**
-Go to the [Firebase console](https://console.firebase.google.com) → **Add
-project** (Google Analytics optional).
+The status board is now live. `/admin` here redirects to the board.
 
-**2. Create a Realtime Database**
-Left menu → **Build → Realtime Database → Create Database**. Pick a location and
-start in **test mode** (you'll tighten this in step 5).
+### 3. Admin on a separate URL (second project)
 
-**3. Register a Web app**
-Project settings (⚙️) → **General → Your apps → Web (`</>`)**. Give it a
-nickname. Firebase shows you a `firebaseConfig = { … }` object — copy it.
+1. **Add New → Project → Import** the **same repo** again. Name it e.g.
+   `epic-espresso-admin`. Framework **Other**, Root `./`. **Deploy.**
+2. **Storage:** connect the **same KV database** you created in step 2 to this
+   project (Storage → Connect Database → pick the existing one). Sharing the
+   store is what keeps both URLs in sync.
+3. **Settings → Environment Variables:**
+   - `ADMIN_PIN` = the **same** passcode as the public project
+   - `APP_ROLE` = `admin`
+4. **Redeploy.** Your staff admin URL is `https://epic-espresso-admin.vercel.app`
+   → opens the PIN-gated control panel.
 
-**4. Paste your values into `assets/js/config.js`**
+> Want a single URL instead of two? Deploy just one project, set `ADMIN_PIN`,
+> and leave `APP_ROLE` unset. Then `/admin` is reachable on the same domain but
+> still locked behind the PIN.
 
-```js
-export const firebaseConfig = {
-  apiKey: "AIza…",
-  authDomain: "your-project.firebaseapp.com",
-  databaseURL: "https://your-project-default-rtdb.firebaseio.com",
-  projectId: "your-project",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abc123",
-};
-```
-
-The app switches to Firebase automatically once `apiKey` and `databaseURL` are
-filled in. (Prefer to keep this file out of git? Add it to `.gitignore` and
-commit a copy named `config.example.js` — the app only imports `config.js`.)
-
-**5. Lock down your database rules**
-In **Realtime Database → Rules**, paste the contents of
-[`firebase.rules.json`](firebase.rules.json). These allow open read/write (fine
-for an internal sign) **but validate the shape** and cap the message length:
-
-```json
-{
-  "rules": {
-    "coffee": {
-      ".read": true,
-      ".write": true,
-      ".validate": "newData.hasChildren(['status', 'message', 'updatedAt'])",
-      "status":    { ".validate": "newData.isString() && newData.val().length <= 32" },
-      "message":   { ".validate": "newData.isString() && newData.val().length <= 280" },
-      "updatedAt": { ".validate": "newData.isNumber()" }
-    }
-  }
-}
-```
-
-> Anyone with the URL can still write. For a public deployment, add PIN/auth
-> protection for `/admin` (see [Future enhancements](#future-enhancements)) and
-> restrict `.write` accordingly.
+Both projects auto-deploy on every push to `main`.
 
 ---
 
-## Deploy
+## Environment variables
 
-It's a static site — host the repo root as-is. The clean `/admin` and `/display`
-URLs work everywhere because each is its own `index.html` in a folder. The
-included `.nojekyll` file keeps GitHub Pages from mangling the `assets/` folder.
+| Variable                          | Where                | Purpose                                                  |
+| --------------------------------- | -------------------- | -------------------------------------------------------- |
+| `KV_REST_API_URL` / `_TOKEN`      | both projects        | Vercel KV connection (added automatically by Storage)    |
+| `ADMIN_PIN`                       | admin project (req.) | Passcode required to write. Set on public too if single-project |
+| `APP_ROLE`                        | both                 | `public` = read-only + admin hidden; `admin`/unset = full |
 
-### GitHub Pages
-
-1. Push to GitHub.
-2. **Settings → Pages → Build and deployment → Source: Deploy from a branch.**
-3. Choose your branch and `/ (root)`, then **Save**.
-4. Your site appears at `https://<user>.github.io/<repo>/` — with
-   `…/admin/` and `…/display/`.
-
-(All paths in the app are relative, so it works fine under the `/<repo>/`
-subpath.)
-
-### Netlify
-
-- **Drag & drop:** drop the project folder onto the Netlify dashboard.
-- **Git:** “Add new site → Import from Git.” No build command needed;
-  set the **publish directory** to the repo root (`.`).
-
-### Vercel
-
-This repo includes a `vercel.json`, so deploys are zero-config (static site,
-no build step, with light caching on `/assets`).
-
-1. [vercel.com](https://vercel.com) → **Add New → Project → Import Git
-   Repository** → pick `deadoscillate/epic-espresso` (grant the Vercel GitHub
-   app access to the repo when prompted).
-2. **Framework Preset: Other**, **Root Directory: `./`** — leave the Build &
-   Output settings empty. Click **Deploy**.
-3. Vercel then auto-deploys on every push: your **Production Branch** (default
-   `main`) publishes to the production URL, while other branches get **Preview**
-   deployments. To ship this work to production, merge it into `main` — or set
-   the Production Branch under **Project → Settings → Git**.
-
-Prefer the CLI? `npm i -g vercel`, then run `vercel` (link/create the project)
-and `vercel --prod` from the repo root.
+`UPSTASH_REDIS_REST_URL` / `_TOKEN` are also accepted if your store uses those
+names. No secrets ever live in the repo.
 
 ---
 
-## Using Admin & Display
+## Install as an app (iOS / Android)
+
+It's a PWA, so it installs straight from the browser — no App Store / Play Store.
+
+- **iPhone / iPad (Safari):** open the URL → **Share** → **Add to Home Screen**.
+- **Android (Chrome):** open the URL → menu **⋮** → **Install app** (or *Add to
+  Home screen*).
+
+Installed apps get the Epic espresso icon, launch full-screen, and remember
+which one they are: the public URL installs as **Espresso** (opens the board),
+the admin URL installs as **Espresso Admin** (opens the PIN screen).
+
+---
+
+## Using it
+
+**Status board (`/display`)** — title, a big icon, the status in huge text, the
+message, and last-updated time, themed per status. Updates live; no refresh.
+Tap **⛶** for full-screen (it also keeps the screen awake where supported).
 
 **Admin (`/admin`)**
 
-- Tap a big status button to go live immediately.
-- The **Optional message** box overrides the status's default note. Leave it
-  blank to use the default (the placeholder shows what that'll be).
+- Enter the **PIN** once per session to unlock.
+- Tap a status button to go live instantly.
+- The **Optional message** overrides the status's default note (leave blank to
+  use the default — the placeholder shows what that'll be).
 - **Update message only** changes the note without changing the status.
-- The **Currently live** card shows exactly what the display is showing, with
-  the last-updated time. If a save fails, you'll get a clear error toast.
+- The **Currently live** card mirrors the board; failed saves show a clear error.
 
-**Display (`/display`)**
-
-- Shows the title, a big icon, the status in huge text, the message, and
-  last-updated time — all themed per status.
-- Updates live; no refresh needed.
-- Tap the **⛶** button (top-right) to go fullscreen.
+Both pages show a **connection indicator**: green = live, amber = demo mode,
+red = reconnecting.
 
 ---
 
-## Kiosk / fullscreen on a tablet
+## Kiosk mode on a tablet
 
-1. On the warehouse tablet/monitor, open `…/display/`.
-2. Tap the **⛶** fullscreen button. The page also tries to keep the screen
-   awake (Screen Wake Lock) while fullscreen, where supported.
-3. For an always-on kiosk:
-   - **iPad/Safari:** Share → *Add to Home Screen*, launch from the icon for a
-     chrome-free view.
-   - **Android/Chrome:** ⋮ → *Add to Home screen*, or use a kiosk-browser app.
-   - **Dedicated displays:** Chrome's `--kiosk <url>` launch flag, or a digital
-     signage app pointed at the display URL.
-4. In device display settings, disable auto-lock / sleep for a permanent sign.
+1. Open `…/display` on the tablet/monitor and tap **⛶**.
+2. For always-on: **iPad** → Add to Home Screen, launch from the icon;
+   **Android** → Install app, or use a kiosk-browser app; **dedicated displays**
+   → Chrome `--kiosk <url>` or a digital-signage app.
+3. Disable the device's auto-lock / sleep for a permanent sign.
 
 ---
 
@@ -247,62 +173,62 @@ and `vercel --prod` from the repo root.
 ```
 .
 ├── index.html              # Landing (/)
-├── admin/index.html        # Admin control panel (/admin)
-├── display/index.html      # Fullscreen display (/display)
+├── admin/
+│   ├── index.html          # Admin panel (/admin)
+│   └── manifest.webmanifest# PWA manifest for the admin app
+├── display/index.html      # Status board (/display)
+├── api/status.js           # Serverless: GET/POST shared state via Vercel KV
+├── middleware.js           # Edge: hides /admin on the public (APP_ROLE) deploy
+├── manifest.webmanifest    # PWA manifest for the public app
+├── sw.js                   # Service worker (installable + offline shell)
 ├── assets/
-│   ├── css/
-│   │   ├── base.css         # Tokens, reset, connection pill, per-status themes
-│   │   ├── landing.css
-│   │   ├── admin.css
-│   │   └── display.css
-│   └── js/
-│       ├── config.js        # ← your Firebase config goes here
-│       ├── statuses.js      # Status catalogue (labels, icons, taglines, themes)
-│       ├── store.js         # Storage abstraction (Firebase | demo mode)
-│       ├── util.js          # Time formatting + connection renderer
-│       ├── landing.js
-│       ├── admin.js
-│       └── display.js
-├── firebase.rules.json     # Ready-to-paste Realtime Database rules
-└── .nojekyll               # Keeps GitHub Pages from touching /assets
+│   ├── css/                # base (tokens + themes), landing, admin, display
+│   ├── js/
+│   │   ├── config.js       # API path + poll interval (no secrets)
+│   │   ├── statuses.js     # Status catalogue (labels, icons, taglines)
+│   │   ├── store.js        # Storage abstraction (live API | demo)
+│   │   ├── util.js, pwa.js, landing.js, admin.js, display.js
+│   └── img/                # epic-icon.svg + generated PNG app icons
+└── vercel.json
 ```
-
-**Want to add or rename a status?** Edit `assets/js/statuses.js` (one entry per
-status) and add a matching `body[data-status="…"]` theme block in
-`assets/css/base.css`. Both pages update automatically.
 
 ---
 
-## Swapping the backend (Supabase, etc.)
+## Customising
 
-Everything funnels through `createCoffeeStore()` in `assets/js/store.js`, which
-exposes a tiny interface:
+- **Statuses:** edit `assets/js/statuses.js` (one entry per status) and add a
+  matching `body[data-status="…"]` theme block in `assets/css/base.css`. Keep
+  the id list in sync with the `STATUSES` array in `api/status.js`.
+- **Brand colours:** the `--epic-*` and chrome variables live at the top of
+  `assets/css/base.css`.
+- **App icon:** replace `assets/img/epic-icon.svg` and regenerate the PNGs
+  (`icon-192/512`, `icon-maskable-512`, `apple-touch-icon`, `favicon-32`) with
+  any SVG→PNG tool. The current icon is an espresso cup in Epic colours —
+  intentionally distinct from the Epic Charter Schools logo.
 
-```js
-store.onChange(state => { /* { status, message, updatedAt } */ });
-store.onConnection(conn => { /* { online, mode, label } */ });
-await store.setStatus({ status, message });
-await store.init();
-```
+---
 
-To use Supabase (or any backend), add an `initSupabase()` alongside
-`initFirebase()` that wires up the same `setState` / `setConnection` callbacks
-and assigns `applyWrite`. Supabase Realtime maps cleanly: subscribe to a
-single-row table for `onChange`, `upsert` in `applyWrite`. No UI changes needed.
+## Demo mode & optional local dev
+
+With no KV configured, the app runs in **demo mode**: state is stored in the
+browser's localStorage (single device, syncs across tabs). It's the zero-config
+fallback — fine for a quick look, not for driving a separate board.
+
+Local development is **optional** (you don't need it to deploy). If you want it,
+`npx vercel dev` runs the functions + KV locally; a plain static server
+(`npx serve .`) serves the pages in demo mode only (no `/api`).
 
 ---
 
 ## Future enhancements
 
-Planned/parked ideas (intentionally out of scope for v1):
-
-- 🐣 **Epic-chan animated mascot** on the display.
+- 🐣 **Epic-chan animated mascot** on the board.
 - 🎬 **Per-status WebM/MP4 animations** (swap the emoji for short loops).
-- 🔳 **QR code** on the display linking to itself / a mobile status view.
-- 🔒 **PIN / password protection** for `/admin` (plus tightened DB write rules).
-- ⏲️ **Scheduled auto-reset** (e.g. revert to *Closed* / *Empty* after 30 min).
-- 🔔 **Teams / Discord notifications** on status change (via webhook).
-- 🔘 **Physical ESP32 button** that hits the backend to flip status from the bar.
+- 🔳 **QR code** on the board linking to itself / a mobile status view.
+- 🔔 **Teams / Discord notification** on status change (webhook from the API).
+- ⏲️ **Scheduled auto-reset** (revert to *Closed* / *Empty* after 30 min).
+- 🔘 **Physical ESP32 button** that POSTs to `/api/status` to flip status.
+- 🔐 **Per-user logins / SSO** instead of a shared PIN.
 
 ---
 

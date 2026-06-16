@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 // Landing page — shows a small live "Now:" chip so the homepage feels alive.
 // -----------------------------------------------------------------------------
+import "./pwa.js";
 import { createCoffeeStore } from "./store.js";
 import { getStatus } from "./statuses.js";
 

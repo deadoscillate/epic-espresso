@@ -1,0 +1,16 @@
+{
+  "name": "Epic Espresso Bar",
+  "short_name": "Espresso",
+  "description": "Live coffee status board for the Epic Espresso Bar.",
+  "start_url": "/display",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#173a5e",
+  "theme_color": "#173a5e",
+  "icons": [
+    { "src": "/assets/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

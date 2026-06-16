@@ -8,16 +8,22 @@
    ======================================================================== */
 
 :root {
-  /* Neutral "ops console" palette (stable chrome shared by every page). */
-  --bg: #0b1020;
-  --surface: #151b2e;
-  --surface-2: #1d2540;
-  --border: #2a3352;
-  --text: #f4f6fb;
-  --text-dim: #9aa6c4;
+  /* Epic brand palette */
+  --epic-navy: #173a5e;
+  --epic-navy-deep: #0f2942;
+  --epic-gold: #f5c43d;
+  --epic-teal: #3bb7c4;
 
-  /* Sensible default accent before a status loads. */
-  --accent: #64748b;
+  /* App chrome (navy console, stable across pages). */
+  --bg: #0f2942;
+  --surface: #173a5e;
+  --surface-2: #1d4368;
+  --border: #2b5580;
+  --text: #eef3f9;
+  --text-dim: #9db4cf;
+
+  /* Default accent before a status loads (Epic gold). */
+  --accent: #f5c43d;
 
   --radius: 16px;
   --radius-sm: 10px;
@@ -132,10 +138,10 @@ a {
   box-shadow: 0 0 0 0 currentColor;
   animation: conn-pulse 2s infinite;
 }
-.conn[data-mode="firebase"][data-online="true"] .conn-dot {
+.conn[data-mode="live"][data-online="true"] .conn-dot {
   background: #22c55e; /* live */
 }
-.conn[data-mode="firebase"][data-online="false"] .conn-dot {
+.conn[data-mode="live"][data-online="false"] .conn-dot {
   background: #ef4444; /* reconnecting / error */
 }
 @keyframes conn-pulse {

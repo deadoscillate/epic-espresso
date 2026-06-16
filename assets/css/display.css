@@ -129,3 +129,15 @@ body[data-status="maintenance"] .display__status {
 :fullscreen .icon-btn:hover {
   opacity: 1;
 }
+
+/* Brand lockup (mark + title) */
+.display__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.display__mark {
+  border-radius: 10px;
+  flex-shrink: 0;
+}

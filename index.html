@@ -3,18 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>The Brendan Spurlock Memorial Espresso Bar</title>
-    <meta
-      name="description"
-      content="Live coffee status board for the Epic IT Service Desk Espresso Bar."
-    />
+    <title>Epic Espresso Bar</title>
+    <meta name="description" content="Live coffee status board for the Epic Espresso Bar." />
+
+    <link rel="icon" href="/assets/img/favicon-32.png" sizes="32x32" />
+    <link rel="icon" href="/assets/img/epic-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#173a5e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Espresso" />
+
     <link rel="stylesheet" href="assets/css/base.css" />
     <link rel="stylesheet" href="assets/css/landing.css" />
   </head>
   <body data-status="closed">
     <main class="landing">
       <div class="landing__inner">
-        <p class="eyebrow">Epic IT Service Desk</p>
+        <div class="brand-badge">
+          <img src="/assets/img/epic-icon.svg" alt="" width="76" height="76" />
+        </div>
+        <p class="eyebrow">Epic Espresso Bar</p>
         <h1 class="brand">The Brendan Spurlock Memorial Espresso Bar</h1>
         <p class="tagline">
           A small, dignified monument to caffeine-driven productivity.
@@ -26,24 +37,26 @@
         </div>
 
         <nav class="nav-cards" aria-label="Primary">
+          <a class="nav-card" href="display/">
+            <div class="nav-card__icon" aria-hidden="true">🖥️</div>
+            <div class="nav-card__title">Status board</div>
+            <p class="nav-card__desc">
+              The live coffee status. Open this on the warehouse tablet or
+              monitor — or install it on your phone.
+            </p>
+          </a>
           <a class="nav-card" href="admin/">
             <div class="nav-card__icon" aria-hidden="true">🎛️</div>
             <div class="nav-card__title">Admin</div>
             <p class="nav-card__desc">
-              Control panel for baristas. Set the status and post a message.
-            </p>
-          </a>
-          <a class="nav-card" href="display/">
-            <div class="nav-card__icon" aria-hidden="true">🖥️</div>
-            <div class="nav-card__title">Display</div>
-            <p class="nav-card__desc">
-              Fullscreen status board for the warehouse tablet or monitor.
+              Staff control panel (PIN required). Set the status and post a
+              message.
             </p>
           </a>
         </nav>
 
         <p class="landing__footer">
-          Tip: open <strong>Display</strong> on the warehouse screen and
+          Tip: install <strong>Status board</strong> on the warehouse screen and
           <strong>Admin</strong> on your phone.
         </p>
       </div>

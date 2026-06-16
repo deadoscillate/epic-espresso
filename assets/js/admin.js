@@ -1,10 +1,12 @@
 // -----------------------------------------------------------------------------
 // Admin control panel
 // -----------------------------------------------------------------------------
+import "./pwa.js";
 import { createCoffeeStore } from "./store.js";
 import { STATUSES, STATUS_ORDER, getStatus } from "./statuses.js";
 import { formatClock, formatRelative, renderConnection } from "./util.js";
 
+const PIN_KEY = "bsmeb:pin";
 const store = createCoffeeStore();
 
 const els = {
@@ -19,10 +21,19 @@ const els = {
   updatedRel: document.getElementById("updated-rel"),
   connection: document.getElementById("connection"),
   toast: document.getElementById("toast"),
+  gate: document.getElementById("pin-gate"),
+  gateForm: document.getElementById("pin-form"),
+  gateInput: document.getElementById("pin-input"),
+  gateError: document.getElementById("pin-error"),
 };
 
 let liveState = null;
-let messageTouched = false; // don't overwrite the field once the user types.
+let messageTouched = false;
+let busy = false;
+let unlocked = false; // allowed to make changes
+let needsPin = false; // live mode requires a PIN
+let modeHandled = false; // gate/auth resolved once
+let pin = sessionStorage.getItem(PIN_KEY) || null;
 
 // --- Build the status button grid ------------------------------------------
 const buttons = new Map();
@@ -36,40 +47,91 @@ for (const id of STATUS_ORDER) {
   btn.setAttribute("aria-label", `Set status to ${status.label}`);
   btn.innerHTML = `
     <span class="status-btn__icon" aria-hidden="true">${status.icon}</span>
-    <span class="status-btn__label">${status.label}</span>
-  `;
+    <span class="status-btn__label">${status.label}</span>`;
   btn.addEventListener("click", () => applyStatus(id));
   els.grid.appendChild(btn);
   buttons.set(id, btn);
+}
+
+// --- Controls enable/disable ------------------------------------------------
+function updateControls() {
+  const enabled = unlocked && !busy;
+  buttons.forEach((b) => (b.disabled = !enabled));
+  els.applyMessage.disabled = !enabled || !liveState;
 }
 
 // --- Actions ----------------------------------------------------------------
 async function applyStatus(statusId) {
   await commit(statusId, els.message.value, `Status set to “${STATUSES[statusId].label}”.`);
 }
-
 async function applyMessageOnly() {
   if (!liveState) return;
   await commit(liveState.status, els.message.value, "Message updated.");
 }
 
 async function commit(statusId, message, successMsg) {
-  setBusy(true);
+  busy = true;
+  updateControls();
   try {
-    await store.setStatus({ status: statusId, message });
+    await store.setStatus({ status: statusId, message, pin });
     showToast(successMsg, "ok");
   } catch (err) {
-    console.error("[admin] Failed to update status:", err);
-    showToast("Couldn’t save — check your connection and try again.", "error");
+    console.error("[admin] update failed:", err);
+    if (err.code === "bad_pin") {
+      // PIN was rotated — re-lock and prompt again.
+      lock("That PIN no longer works. Please re-enter it.");
+      showToast("PIN required.", "error");
+    } else {
+      showToast(err.message || "Couldn’t save — try again.", "error");
+    }
   } finally {
-    setBusy(false);
+    busy = false;
+    updateControls();
   }
 }
 
-function setBusy(busy) {
-  buttons.forEach((b) => (b.disabled = busy));
-  els.applyMessage.disabled = busy || !liveState;
+// --- PIN gate ---------------------------------------------------------------
+function openGate(message) {
+  els.gate.hidden = false;
+  els.gateError.textContent = message || "";
+  els.gateInput.value = "";
+  setTimeout(() => els.gateInput.focus(), 50);
 }
+function closeGate() {
+  els.gate.hidden = true;
+}
+function unlock() {
+  unlocked = true;
+  closeGate();
+  updateControls();
+}
+function lock(message) {
+  unlocked = false;
+  pin = null;
+  sessionStorage.removeItem(PIN_KEY);
+  if (needsPin) openGate(message);
+  updateControls();
+}
+
+els.gateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const entered = els.gateInput.value.trim();
+  if (!entered) return;
+  els.gateError.textContent = "Checking…";
+  try {
+    const ok = await store.verifyPin(entered);
+    if (ok) {
+      pin = entered;
+      sessionStorage.setItem(PIN_KEY, pin);
+      unlock();
+      showToast("Unlocked.", "ok");
+    } else {
+      els.gateError.textContent = "Incorrect PIN.";
+    }
+  } catch (err) {
+    els.gateError.textContent = err.message || "Couldn’t verify. Try again.";
+  }
+});
 
 // --- Toast ------------------------------------------------------------------
 let toastTimer;
@@ -97,7 +159,6 @@ function render(state) {
   const status = getStatus(state.status);
   const shownMessage = state.message || status.tagline;
 
-  // Reflect the active status across the page.
   document.body.dataset.status = status.id;
   buttons.forEach((btn, id) => {
     const active = id === status.id;
@@ -105,31 +166,49 @@ function render(state) {
     btn.setAttribute("aria-pressed", String(active));
   });
 
-  // "Currently live" summary card.
   els.currentIcon.textContent = status.icon;
   els.currentLabel.textContent = status.label;
   els.currentMessage.textContent = shownMessage;
   els.updatedAbs.textContent = formatClock(state.updatedAt);
   els.updatedRel.textContent = formatRelative(state.updatedAt);
 
-  // Use the status tagline as the field placeholder; prefill the live message
-  // once, but never fight the user once they've started typing.
   els.message.placeholder = status.tagline;
   if (!messageTouched) {
     els.message.value = state.message || "";
     updateMessageCount();
   }
-  els.applyMessage.disabled = false;
+  updateControls();
 }
 
 // --- Wire up & go ------------------------------------------------------------
-store.onConnection((conn) => renderConnection(els.connection, conn));
+store.onConnection((conn) => {
+  renderConnection(els.connection, conn);
+  if (modeHandled || conn.mode === "connecting") return;
+  modeHandled = true;
+
+  if (conn.mode === "demo") {
+    needsPin = false;
+    unlock(); // no PIN in demo mode
+    return;
+  }
+
+  // Live mode requires the PIN.
+  needsPin = true;
+  if (pin) {
+    store
+      .verifyPin(pin)
+      .then((ok) => (ok ? unlock() : lock()))
+      .catch(() => openGate("Couldn’t verify saved PIN — please re-enter it."));
+  } else {
+    openGate();
+  }
+});
 store.onChange(render);
 
-// Keep the "x min ago" label fresh.
 setInterval(() => {
   if (liveState) els.updatedRel.textContent = formatRelative(liveState.updatedAt);
 }, 15000);
 
 updateMessageCount();
+updateControls();
 store.init();

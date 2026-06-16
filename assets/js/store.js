@@ -1,36 +1,41 @@
 // -----------------------------------------------------------------------------
 // Coffee store — the storage abstraction layer
 // -----------------------------------------------------------------------------
-// Both pages talk only to this interface, never to Firebase or localStorage
-// directly:
+// The pages only ever talk to this interface:
 //
 //   const store = createCoffeeStore();
-//   store.onChange(state => { ... });        // { status, message, updatedAt }
-//   store.onConnection(conn => { ... });     // { online, mode, label }
-//   await store.setStatus({ status, message });
+//   store.onChange(state => { ... });          // { status, message, updatedAt }
+//   store.onConnection(conn => { ... });        // { online, mode, label }
+//   await store.verifyPin(pin);                 // admin gate -> boolean
+//   await store.setStatus({ status, message, pin });
 //   await store.init();
 //
-// Backend selection is automatic:
-//   • Firebase Realtime Database when assets/js/config.js is filled in.
-//   • Otherwise a localStorage "demo mode" (single device, syncs across tabs).
+// Backend is chosen automatically at init():
+//   • "live"  — polls the same-origin /api/status (Vercel KV). Used whenever the
+//               API responds. Writes POST to the API with the admin PIN.
+//   • "demo"  — localStorage fallback (single device, syncs across tabs) used
+//               when the API isn't available (e.g. opened as a static file, or
+//               KV isn't configured yet). Clearly labelled in the UI.
 //
-// To add Supabase (or any other backend) later, implement an `initX()` that
-// wires up the same `setState` / `setConnection` callbacks and assigns
-// `applyWrite`. Nothing in the UI needs to change.
+// To add another backend later, implement a start function that wires up the
+// same setState/setConnection callbacks and assigns applyWrite/verify.
 // -----------------------------------------------------------------------------
 
-import { firebaseConfig, isFirebaseConfigured } from "./config.js";
+import { API_PATH, POLL_INTERVAL_MS } from "./config.js";
 import { STATUSES, DEFAULT_STATUS_ID } from "./statuses.js";
 
 const DEMO_KEY = "bsmeb:state";
 const MESSAGE_MAX = 280;
-
-// Pinned Firebase SDK version for the CDN ES module imports.
-const FIREBASE_VERSION = "10.12.2";
-
 const DEFAULT_STATE = { status: DEFAULT_STATUS_ID, message: "", updatedAt: null };
 
-// Defensive normalisation so the UI can trust whatever comes back from storage.
+// Error with a machine-readable code so the admin UI can react (e.g. bad_pin).
+export class StoreError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code;
+  }
+}
+
 function sanitize(raw) {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_STATE };
   return {
@@ -46,16 +51,12 @@ export function createCoffeeStore() {
 
   let state = { ...DEFAULT_STATE };
   let hasData = false;
-  let connection = {
-    online: false,
-    mode: isFirebaseConfigured() ? "firebase" : "demo",
-    label: "Connecting…",
-  };
+  let connection = { online: false, mode: "connecting", label: "Connecting…" };
 
-  // Replaced by the active backend during init().
   let applyWrite = async () => {
-    throw new Error("Store not initialised yet.");
+    throw new StoreError("Store not ready.", "not_ready");
   };
+  let verifyImpl = async () => true; // demo mode needs no PIN
 
   const emitChange = () => changeHandlers.forEach((h) => h(state));
   const emitConn = () => connHandlers.forEach((h) => h(connection));
@@ -64,76 +65,94 @@ export function createCoffeeStore() {
     connection = { ...connection, ...patch };
     emitConn();
   }
-
   function setState(next) {
-    state = sanitize(next);
+    const clean = sanitize(next);
+    // Avoid redundant re-renders when nothing changed.
+    if (hasData && clean.status === state.status && clean.message === state.message && clean.updatedAt === state.updatedAt) {
+      return;
+    }
+    state = clean;
     hasData = true;
     emitChange();
   }
 
-  // --- Backend: Firebase Realtime Database --------------------------------
-  async function initFirebase() {
-    const [{ initializeApp }, db] = await Promise.all([
-      import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`),
-      import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-database.js`),
-    ]);
-    const { getDatabase, ref, onValue, set, serverTimestamp } = db;
+  // --- Backend: live API (polling) ----------------------------------------
+  function startApi() {
+    setConnection({ mode: "live", online: true, label: "Live" });
 
-    const app = initializeApp(firebaseConfig);
-    const database = getDatabase(app);
-    const stateRef = ref(database, "coffee"); // { status, message, updatedAt }
-    const connectedRef = ref(database, ".info/connected");
+    async function poll() {
+      try {
+        const res = await fetch(API_PATH, { cache: "no-store" });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        setState(await res.json());
+        if (!connection.online) setConnection({ online: true, label: "Live" });
+      } catch (err) {
+        if (connection.online) setConnection({ online: false, label: "Reconnecting…" });
+      }
+    }
 
-    onValue(connectedRef, (snap) => {
-      const online = snap.val() === true;
-      setConnection({ online, label: online ? "Live" : "Reconnecting…" });
+    poll();
+    setInterval(poll, POLL_INTERVAL_MS);
+    // Re-check immediately when a kiosk tab regains focus.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") poll();
     });
 
-    onValue(
-      stateRef,
-      (snap) => setState(snap.val() ?? DEFAULT_STATE),
-      (err) => {
-        console.error("[store] Firebase read failed:", err);
-        setConnection({ online: false, label: "Connection error" });
-      }
-    );
-
     applyWrite = async (next) => {
-      await set(stateRef, {
-        status: next.status,
-        message: next.message,
-        updatedAt: serverTimestamp(),
+      let res;
+      try {
+        res = await fetch(API_PATH, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(next),
+        });
+      } catch {
+        throw new StoreError("Network error — try again.", "network");
+      }
+      if (res.status === 401) throw new StoreError("Incorrect PIN.", "bad_pin");
+      if (res.status === 403) throw new StoreError("This site is read-only.", "read_only");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new StoreError("Couldn’t save — please try again.", body.error || `http_${res.status}`);
+      }
+      setState(await res.json());
+    };
+
+    verifyImpl = async (pin) => {
+      const res = await fetch(API_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin, verify: true }),
       });
+      if (res.ok) return true;
+      if (res.status === 401) return false;
+      throw new StoreError("Couldn’t reach the server.", "verify_failed");
     };
   }
 
-  // --- Backend: localStorage demo mode ------------------------------------
-  function initDemo() {
+  // --- Backend: localStorage demo -----------------------------------------
+  function startDemo() {
     setConnection({ mode: "demo", online: true, label: "Demo mode · this device only" });
 
     const load = () => {
       try {
         const raw = localStorage.getItem(DEMO_KEY);
         setState(raw ? JSON.parse(raw) : DEFAULT_STATE);
-      } catch (err) {
-        console.error("[store] Failed to read demo state:", err);
+      } catch {
         setState(DEFAULT_STATE);
       }
     };
-
-    // `storage` events fire in *other* tabs of the same browser — this is what
-    // gives demo mode its (single-device) live updates.
     window.addEventListener("storage", (e) => {
       if (e.key === DEMO_KEY) load();
     });
-
     load();
 
     applyWrite = async (next) => {
       const record = { status: next.status, message: next.message, updatedAt: Date.now() };
       localStorage.setItem(DEMO_KEY, JSON.stringify(record));
-      setState(record); // `storage` events don't fire in the writing tab.
+      setState(record); // storage event doesn't fire in the writing tab
     };
+    verifyImpl = async () => true; // no PIN needed in demo
   }
 
   return {
@@ -141,42 +160,38 @@ export function createCoffeeStore() {
       return connection.mode;
     },
 
-    // Subscribe to state changes. Immediately replays the latest known state.
-    // Returns an unsubscribe function.
     onChange(handler) {
       changeHandlers.add(handler);
       if (hasData) handler(state);
       return () => changeHandlers.delete(handler);
     },
 
-    // Subscribe to connection changes. Immediately replays current connection.
     onConnection(handler) {
       connHandlers.add(handler);
       handler(connection);
       return () => connHandlers.delete(handler);
     },
 
-    async setStatus({ status, message = "" }) {
-      if (!STATUSES[status]) throw new Error(`Unknown status: ${status}`);
-      await applyWrite({
-        status,
-        message: String(message).trim().slice(0, MESSAGE_MAX),
-      });
+    verifyPin(pin) {
+      return verifyImpl(pin);
+    },
+
+    async setStatus({ status, message = "", pin }) {
+      if (!STATUSES[status]) throw new StoreError(`Unknown status: ${status}`, "bad_status");
+      await applyWrite({ status, message: String(message).trim().slice(0, MESSAGE_MAX), pin });
     },
 
     async init() {
       try {
-        if (isFirebaseConfigured()) {
-          await initFirebase();
-        } else {
-          initDemo();
+        const res = await fetch(API_PATH, { cache: "no-store" });
+        if (res.ok) {
+          setState(await res.json());
+          startApi();
+          return;
         }
-      } catch (err) {
-        // If Firebase fails to load (offline, blocked CDN, bad config) we keep
-        // the app usable by falling back to demo mode rather than dying.
-        console.error("[store] Init failed; falling back to demo mode:", err);
-        setConnection({ mode: "demo", online: true, label: "Demo mode · sync unavailable" });
-        initDemo();
+        throw new Error(`api ${res.status}`); // 503 (no KV) etc. -> demo
+      } catch {
+        startDemo();
       }
     },
   };

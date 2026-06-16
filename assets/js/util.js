@@ -36,7 +36,7 @@ export function formatRelative(ts, now = Date.now()) {
 // `data-online` / `data-mode` attributes set here.
 export function renderConnection(el, conn) {
   if (!el) return;
-  el.dataset.mode = conn.mode; // "firebase" | "demo"
+  el.dataset.mode = conn.mode; // "live" | "demo"
   el.dataset.online = String(conn.online);
   const text = el.querySelector(".conn-text");
   if (text) text.textContent = conn.label;
