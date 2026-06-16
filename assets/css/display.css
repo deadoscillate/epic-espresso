@@ -55,6 +55,22 @@
   display: none;
 }
 
+/* Manager (Joe) badge */
+.manager-badge {
+  align-self: center;
+  margin-top: 0.5rem;
+  padding: 0.45em 1em;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--theme-fg, var(--text));
+  font-size: clamp(0.9rem, 2.4vw, 1.4rem);
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.manager-badge[hidden] {
+  display: none;
+}
+
 /* Centre stage */
 .display__stage {
   flex: 1;

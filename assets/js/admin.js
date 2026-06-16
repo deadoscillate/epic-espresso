@@ -3,7 +3,14 @@
 // -----------------------------------------------------------------------------
 import "./pwa.js";
 import { createCoffeeStore } from "./store.js";
-import { STATUSES, STATUS_ORDER, getStatus } from "./statuses.js";
+import {
+  STATUSES,
+  STATUS_ORDER,
+  getStatus,
+  MANAGER_STATES,
+  MANAGER_ORDER,
+  getManager,
+} from "./statuses.js";
 import { formatClock, formatRelative, renderConnection } from "./util.js";
 
 const PIN_KEY = "bsmeb:pin";
@@ -22,6 +29,9 @@ const els = {
   updatedRel: document.getElementById("updated-rel"),
   connection: document.getElementById("connection"),
   toast: document.getElementById("toast"),
+  managerGrid: document.getElementById("manager-grid"),
+  managerNote: document.getElementById("manager-note"),
+  managerCurrent: document.getElementById("manager-current"),
   gate: document.getElementById("pin-gate"),
   gateForm: document.getElementById("pin-form"),
   gateInput: document.getElementById("pin-input"),
@@ -30,13 +40,14 @@ const els = {
 
 let liveState = null;
 let messageTouched = false;
+let managerNoteTouched = false;
 let busy = false;
-let unlocked = false; // allowed to make changes
-let needsPin = false; // live mode requires a PIN
-let modeHandled = false; // gate/auth resolved once
+let unlocked = false;
+let needsPin = false;
+let modeHandled = false;
 let pin = sessionStorage.getItem(PIN_KEY) || null;
 
-// --- Build the status button grid ------------------------------------------
+// --- Status button grid -----------------------------------------------------
 const buttons = new Map();
 for (const id of STATUS_ORDER) {
   const status = STATUSES[id];
@@ -54,7 +65,23 @@ for (const id of STATUS_ORDER) {
   buttons.set(id, btn);
 }
 
-// Show the emoji instead if the thumbnail image can't load.
+// --- Manager (Joe) button grid ----------------------------------------------
+const managerButtons = new Map();
+for (const id of MANAGER_ORDER) {
+  const m = MANAGER_STATES[id];
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "manager-btn";
+  btn.dataset.mstate = id;
+  btn.setAttribute("aria-pressed", "false");
+  btn.setAttribute("aria-label", `Set Joe to ${m.label}`);
+  btn.innerHTML = `<span aria-hidden="true">${m.icon}</span> <span>${m.label}</span>`;
+  btn.addEventListener("click", () => commitManager(id));
+  els.managerGrid.appendChild(btn);
+  managerButtons.set(id, btn);
+}
+
+// Thumbnail falls back to the emoji if the image can't load.
 els.currentThumb.addEventListener("load", () => {
   els.currentThumb.hidden = false;
   els.currentIcon.hidden = true;
@@ -68,6 +95,7 @@ els.currentThumb.addEventListener("error", () => {
 function updateControls() {
   const enabled = unlocked && !busy;
   buttons.forEach((b) => (b.disabled = !enabled));
+  managerButtons.forEach((b) => (b.disabled = !enabled));
   els.applyMessage.disabled = !enabled || !liveState;
 }
 
@@ -87,17 +115,34 @@ async function commit(statusId, message, successMsg) {
     await store.setStatus({ status: statusId, message, pin });
     showToast(successMsg, "ok");
   } catch (err) {
-    console.error("[admin] update failed:", err);
-    if (err.code === "bad_pin") {
-      // PIN was rotated — re-lock and prompt again.
-      lock("That PIN no longer works. Please re-enter it.");
-      showToast("PIN required.", "error");
-    } else {
-      showToast(err.message || "Couldn’t save — try again.", "error");
-    }
+    handleWriteError(err, "Couldn’t save — try again.");
   } finally {
     busy = false;
     updateControls();
+  }
+}
+
+async function commitManager(stateId) {
+  busy = true;
+  updateControls();
+  try {
+    await store.setManager({ state: stateId, note: els.managerNote.value, pin });
+    showToast(`Joe: ${MANAGER_STATES[stateId].label}.`, "ok");
+  } catch (err) {
+    handleWriteError(err, "Couldn’t update Joe’s status.");
+  } finally {
+    busy = false;
+    updateControls();
+  }
+}
+
+function handleWriteError(err, fallback) {
+  console.error("[admin] update failed:", err);
+  if (err.code === "bad_pin") {
+    lock("That PIN no longer works. Please re-enter it.");
+    showToast("PIN required.", "error");
+  } else {
+    showToast(err.message || fallback, "error");
   }
 }
 
@@ -108,12 +153,9 @@ function openGate(message) {
   els.gateInput.value = "";
   setTimeout(() => els.gateInput.focus(), 50);
 }
-function closeGate() {
-  els.gate.hidden = true;
-}
 function unlock() {
   unlocked = true;
-  closeGate();
+  els.gate.hidden = true;
   updateControls();
 }
 function lock(message) {
@@ -130,8 +172,7 @@ els.gateForm.addEventListener("submit", async (e) => {
   if (!entered) return;
   els.gateError.textContent = "Checking…";
   try {
-    const ok = await store.verifyPin(entered);
-    if (ok) {
+    if (await store.verifyPin(entered)) {
       pin = entered;
       sessionStorage.setItem(PIN_KEY, pin);
       unlock();
@@ -154,13 +195,16 @@ function showToast(text, kind) {
   toastTimer = setTimeout(() => els.toast.classList.remove("is-visible"), 3200);
 }
 
-// --- Message field ----------------------------------------------------------
+// --- Inputs -----------------------------------------------------------------
 function updateMessageCount() {
   els.messageCount.textContent = `${els.message.value.length}/280`;
 }
 els.message.addEventListener("input", () => {
   messageTouched = true;
   updateMessageCount();
+});
+els.managerNote.addEventListener("input", () => {
+  managerNoteTouched = true;
 });
 els.applyMessage.addEventListener("click", applyMessageOnly);
 
@@ -182,7 +226,7 @@ function render(state) {
     els.currentThumb.alt = status.label;
     els.currentThumb.src = status.image;
   }
-  els.currentIcon.textContent = status.icon; // fallback if the thumbnail fails
+  els.currentIcon.textContent = status.icon;
   els.currentLabel.textContent = status.label;
   els.currentMessage.textContent = shownMessage;
   els.updatedAbs.textContent = formatClock(state.updatedAt);
@@ -193,6 +237,20 @@ function render(state) {
     els.message.value = state.message || "";
     updateMessageCount();
   }
+
+  // Manager (Joe)
+  const manager = state.manager || { state: "available", note: "", updatedAt: null };
+  const mInfo = getManager(manager.state);
+  managerButtons.forEach((btn, id) => {
+    const active = id === manager.state;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-pressed", String(active));
+  });
+  els.managerCurrent.textContent = manager.note
+    ? `${mInfo.icon} ${mInfo.label} — ${manager.note}`
+    : `${mInfo.icon} ${mInfo.label}`;
+  if (!managerNoteTouched) els.managerNote.value = manager.note || "";
+
   updateControls();
 }
 
@@ -204,11 +262,9 @@ store.onConnection((conn) => {
 
   if (conn.mode === "demo") {
     needsPin = false;
-    unlock(); // no PIN in demo mode
+    unlock();
     return;
   }
-
-  // Live mode requires the PIN.
   needsPin = true;
   if (pin) {
     store

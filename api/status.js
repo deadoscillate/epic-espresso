@@ -1,15 +1,15 @@
 // -----------------------------------------------------------------------------
-// /api/status — the shared coffee state, backed by Neon (serverless Postgres)
+// /api/status — the shared state, backed by Neon (serverless Postgres)
 // -----------------------------------------------------------------------------
-//   GET  -> returns { status, message, updatedAt }            (public, read-only)
-//   POST -> updates the state; requires the admin PIN          (write)
-//           body: { status, message, pin }     or  { pin, verify: true }
+//   GET  -> { status, message, updatedAt, manager: { state, note, updatedAt } }
+//   POST -> updates the state; requires the admin PIN. Partial:
+//             { status, message, pin }            -> coffee status
+//             { manager: { state, note }, pin }   -> manager (Joe) presence
+//             { pin, verify: true }               -> PIN check only
 //
-// State lives in a single-row table `coffee_state` (created on demand, so
-// there's no migration step). Configured entirely via Vercel environment
-// variables:
-//   DATABASE_URL  -> Neon connection string (added by the Vercel Neon
-//                    integration; POSTGRES_URL is also accepted)
+// State lives in a single-row table `coffee_state` (created/upgraded on demand,
+// so there's no migration step). Configured via Vercel env vars:
+//   DATABASE_URL  -> Neon connection string (POSTGRES_URL also accepted)
 //   ADMIN_PIN     -> passcode required to write
 //   APP_ROLE      -> "public" makes this deployment read-only (hides admin)
 // -----------------------------------------------------------------------------
@@ -17,8 +17,11 @@
 import { neon } from "@neondatabase/serverless";
 
 const MESSAGE_MAX = 280;
+const NOTE_MAX = 120;
 const STATUSES = ["brewing", "ready", "empty", "cleaning", "closed", "beans_low", "maintenance"];
+const MANAGER_STATES = ["available", "meeting", "heads_down", "out"];
 const DEFAULT_STATE = { status: "closed", message: "", updatedAt: null };
+const DEFAULT_MANAGER = { state: "available", note: "", updatedAt: null };
 
 const DB_URL =
   process.env.DATABASE_URL ||
@@ -37,22 +40,33 @@ async function ensureTable(db) {
     message text NOT NULL DEFAULT '',
     updated_at bigint
   )`;
+  // Added later (manager presence) — idempotent for existing tables.
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_state text`;
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_note text`;
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_updated_at bigint`;
   tableReady = true;
 }
 
 async function readState(db) {
   await ensureTable(db);
-  const rows = await db`SELECT status, message, updated_at FROM coffee_state WHERE id = 1`;
-  if (!rows.length) return { ...DEFAULT_STATE };
-  const row = rows[0];
+  const rows = await db`SELECT status, message, updated_at,
+                               manager_state, manager_note, manager_updated_at
+                        FROM coffee_state WHERE id = 1`;
+  if (!rows.length) return { ...DEFAULT_STATE, manager: { ...DEFAULT_MANAGER } };
+  const r = rows[0];
   return {
-    status: row.status,
-    message: row.message ?? "",
-    updatedAt: row.updated_at == null ? null : Number(row.updated_at),
+    status: r.status,
+    message: r.message ?? "",
+    updatedAt: r.updated_at == null ? null : Number(r.updated_at),
+    manager: {
+      state: r.manager_state || DEFAULT_MANAGER.state,
+      note: r.manager_note || "",
+      updatedAt: r.manager_updated_at == null ? null : Number(r.manager_updated_at),
+    },
   };
 }
 
-async function writeState(db, status, message) {
+async function writeCoffee(db, status, message) {
   await ensureTable(db);
   const updatedAt = Date.now();
   await db`INSERT INTO coffee_state (id, status, message, updated_at)
@@ -61,7 +75,17 @@ async function writeState(db, status, message) {
              SET status = EXCLUDED.status,
                  message = EXCLUDED.message,
                  updated_at = EXCLUDED.updated_at`;
-  return { status, message, updatedAt };
+}
+
+async function writeManager(db, state, note) {
+  await ensureTable(db);
+  const updatedAt = Date.now();
+  await db`INSERT INTO coffee_state (id, status, message, manager_state, manager_note, manager_updated_at)
+           VALUES (1, ${DEFAULT_STATE.status}, ${""}, ${state}, ${note}, ${updatedAt})
+           ON CONFLICT (id) DO UPDATE
+             SET manager_state = EXCLUDED.manager_state,
+                 manager_note = EXCLUDED.manager_note,
+                 manager_updated_at = EXCLUDED.manager_updated_at`;
 }
 
 function send(res, code, obj) {
@@ -99,8 +123,6 @@ export async function handle(req, res, db) {
     return res.end();
   }
 
-  // Without a database the live backend can't work; signal "unconfigured" so the
-  // front-end falls back to demo mode cleanly.
   if (!db) return send(res, 503, { error: "storage_not_configured" });
 
   if (req.method === "GET") {
@@ -129,13 +151,21 @@ export async function handle(req, res, db) {
     if (!pinMatches(String(body.pin || ""), adminPin)) {
       return send(res, 401, { error: "bad_pin" });
     }
-    if (body.verify) return send(res, 200, { ok: true }); // PIN-only check
+    if (body.verify) return send(res, 200, { ok: true });
 
-    if (!STATUSES.includes(body.status)) return send(res, 400, { error: "bad_status" });
-
-    const message = String(body.message || "").trim().slice(0, MESSAGE_MAX);
     try {
-      return send(res, 200, await writeState(db, body.status, message));
+      if (body.manager) {
+        if (!MANAGER_STATES.includes(body.manager.state)) {
+          return send(res, 400, { error: "bad_manager_state" });
+        }
+        const note = String(body.manager.note || "").trim().slice(0, NOTE_MAX);
+        await writeManager(db, body.manager.state, note);
+      } else {
+        if (!STATUSES.includes(body.status)) return send(res, 400, { error: "bad_status" });
+        const message = String(body.message || "").trim().slice(0, MESSAGE_MAX);
+        await writeCoffee(db, body.status, message);
+      }
+      return send(res, 200, await readState(db));
     } catch (err) {
       console.error("[api] DB write failed:", err);
       return send(res, 502, { error: "db_write_failed" });

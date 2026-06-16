@@ -4,21 +4,17 @@
 // The pages only ever talk to this interface:
 //
 //   const store = createCoffeeStore();
-//   store.onChange(state => { ... });          // { status, message, updatedAt }
-//   store.onConnection(conn => { ... });        // { online, mode, label }
-//   await store.verifyPin(pin);                 // admin gate -> boolean
+//   store.onChange(state => { ... });   // { status, message, updatedAt, manager }
+//   store.onConnection(conn => { ... }); // { online, mode, label }
+//   await store.verifyPin(pin);          // admin gate -> boolean
 //   await store.setStatus({ status, message, pin });
+//   await store.setManager({ state, note, pin });   // "Joe is in a meeting"
 //   await store.init();
 //
 // Backend is chosen automatically at init():
-//   • "live"  — polls the same-origin /api/status (Neon Postgres). Used whenever the
-//               API responds. Writes POST to the API with the admin PIN.
-//   • "demo"  — localStorage fallback (single device, syncs across tabs) used
-//               when the API isn't available (e.g. opened as a static file, or
-//               the database isn't configured yet). Clearly labelled in the UI.
-//
-// To add another backend later, implement a start function that wires up the
-// same setState/setConnection callbacks and assigns applyWrite/verify.
+//   • "live"  — polls /api/status (Neon Postgres) and POSTs partial updates.
+//   • "demo"  — localStorage fallback when the API is unavailable (single
+//               device; syncs across tabs). Clearly labelled in the UI.
 // -----------------------------------------------------------------------------
 
 import { API_PATH, POLL_INTERVAL_MS } from "./config.js";
@@ -26,9 +22,15 @@ import { STATUSES, DEFAULT_STATUS_ID } from "./statuses.js";
 
 const DEMO_KEY = "bsmeb:state";
 const MESSAGE_MAX = 280;
-const DEFAULT_STATE = { status: DEFAULT_STATUS_ID, message: "", updatedAt: null };
+const NOTE_MAX = 120;
+const DEFAULT_MANAGER = { state: "available", note: "", updatedAt: null };
+const DEFAULT_STATE = {
+  status: DEFAULT_STATUS_ID,
+  message: "",
+  updatedAt: null,
+  manager: { ...DEFAULT_MANAGER },
+};
 
-// Error with a machine-readable code so the admin UI can react (e.g. bad_pin).
 export class StoreError extends Error {
   constructor(message, code) {
     super(message);
@@ -36,13 +38,34 @@ export class StoreError extends Error {
   }
 }
 
+function sanitizeManager(m) {
+  if (!m || typeof m !== "object") return { ...DEFAULT_MANAGER };
+  return {
+    state: typeof m.state === "string" ? m.state : DEFAULT_MANAGER.state,
+    note: typeof m.note === "string" ? m.note.slice(0, NOTE_MAX) : "",
+    updatedAt: typeof m.updatedAt === "number" ? m.updatedAt : null,
+  };
+}
+
 function sanitize(raw) {
-  if (!raw || typeof raw !== "object") return { ...DEFAULT_STATE };
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_STATE, manager: { ...DEFAULT_MANAGER } };
   return {
     status: STATUSES[raw.status] ? raw.status : DEFAULT_STATUS_ID,
     message: typeof raw.message === "string" ? raw.message.slice(0, MESSAGE_MAX) : "",
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : null,
+    manager: sanitizeManager(raw.manager),
   };
+}
+
+function sameState(a, b) {
+  return (
+    a.status === b.status &&
+    a.message === b.message &&
+    a.updatedAt === b.updatedAt &&
+    a.manager.state === b.manager.state &&
+    a.manager.note === b.manager.note &&
+    a.manager.updatedAt === b.manager.updatedAt
+  );
 }
 
 export function createCoffeeStore() {
@@ -56,7 +79,7 @@ export function createCoffeeStore() {
   let applyWrite = async () => {
     throw new StoreError("Store not ready.", "not_ready");
   };
-  let verifyImpl = async () => true; // demo mode needs no PIN
+  let verifyImpl = async () => true; // demo needs no PIN
 
   const emitChange = () => changeHandlers.forEach((h) => h(state));
   const emitConn = () => connHandlers.forEach((h) => h(connection));
@@ -67,10 +90,7 @@ export function createCoffeeStore() {
   }
   function setState(next) {
     const clean = sanitize(next);
-    // Avoid redundant re-renders when nothing changed.
-    if (hasData && clean.status === state.status && clean.message === state.message && clean.updatedAt === state.updatedAt) {
-      return;
-    }
+    if (hasData && sameState(clean, state)) return; // skip redundant re-renders
     state = clean;
     hasData = true;
     emitChange();
@@ -86,25 +106,24 @@ export function createCoffeeStore() {
         if (!res.ok) throw new Error(`status ${res.status}`);
         setState(await res.json());
         if (!connection.online) setConnection({ online: true, label: "Live" });
-      } catch (err) {
+      } catch {
         if (connection.online) setConnection({ online: false, label: "Reconnecting…" });
       }
     }
 
     poll();
     setInterval(poll, POLL_INTERVAL_MS);
-    // Re-check immediately when a kiosk tab regains focus.
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") poll();
     });
 
-    applyWrite = async (next) => {
+    applyWrite = async (payload) => {
       let res;
       try {
         res = await fetch(API_PATH, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(next),
+          body: JSON.stringify(payload),
         });
       } catch {
         throw new StoreError("Network error — try again.", "network");
@@ -147,12 +166,18 @@ export function createCoffeeStore() {
     });
     load();
 
-    applyWrite = async (next) => {
-      const record = { status: next.status, message: next.message, updatedAt: Date.now() };
-      localStorage.setItem(DEMO_KEY, JSON.stringify(record));
-      setState(record); // storage event doesn't fire in the writing tab
+    applyWrite = async (payload) => {
+      // Merge the partial update into the current state (coffee or manager).
+      let next;
+      if (payload.manager) {
+        next = { ...state, manager: { ...payload.manager, updatedAt: Date.now() } };
+      } else {
+        next = { ...state, status: payload.status, message: payload.message, updatedAt: Date.now() };
+      }
+      localStorage.setItem(DEMO_KEY, JSON.stringify(next));
+      setState(next); // storage event doesn't fire in the writing tab
     };
-    verifyImpl = async () => true; // no PIN needed in demo
+    verifyImpl = async () => true;
   }
 
   return {
@@ -179,6 +204,10 @@ export function createCoffeeStore() {
     async setStatus({ status, message = "", pin }) {
       if (!STATUSES[status]) throw new StoreError(`Unknown status: ${status}`, "bad_status");
       await applyWrite({ status, message: String(message).trim().slice(0, MESSAGE_MAX), pin });
+    },
+
+    async setManager({ state: mState, note = "", pin }) {
+      await applyWrite({ manager: { state: mState, note: String(note).trim().slice(0, NOTE_MAX) }, pin });
     },
 
     async init() {

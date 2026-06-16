@@ -79,3 +79,20 @@ export const STATUSES = {
 export function getStatus(id) {
   return STATUSES[id] || STATUSES[DEFAULT_STATUS_ID];
 }
+
+// -----------------------------------------------------------------------------
+// Manager presence — "Joe is in a meeting" (single person, in his office).
+// -----------------------------------------------------------------------------
+export const DEFAULT_MANAGER_STATE = "available";
+export const MANAGER_ORDER = ["available", "meeting", "heads_down", "out"];
+
+export const MANAGER_STATES = {
+  available: { id: "available", label: "Available", icon: "🟢" },
+  meeting: { id: "meeting", label: "In a meeting", icon: "📅" },
+  heads_down: { id: "heads_down", label: "Heads-down", icon: "🎧" },
+  out: { id: "out", label: "Out", icon: "🚪" },
+};
+
+export function getManager(state) {
+  return MANAGER_STATES[state] || MANAGER_STATES[DEFAULT_MANAGER_STATE];
+}

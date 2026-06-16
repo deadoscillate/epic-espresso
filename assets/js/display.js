@@ -4,7 +4,7 @@
 import "./pwa.js";
 import { setupInstallButton } from "./install.js";
 import { createCoffeeStore } from "./store.js";
-import { getStatus } from "./statuses.js";
+import { getStatus, getManager } from "./statuses.js";
 import { formatClock, formatRelative, renderConnection } from "./util.js";
 
 const store = createCoffeeStore();
@@ -17,6 +17,8 @@ const els = {
   tagline: document.getElementById("display-tagline"),
   message: document.getElementById("display-message"),
   live: document.getElementById("display-live"),
+  managerBadge: document.getElementById("manager-badge"),
+  managerBadgeText: document.getElementById("manager-badge-text"),
   updatedAbs: document.getElementById("updated-abs"),
   updatedRel: document.getElementById("updated-rel"),
   connection: document.getElementById("connection"),
@@ -26,7 +28,6 @@ const els = {
 
 let liveState = null;
 
-// Reveal the card on successful load; fall back to emoji + text on failure.
 els.card.addEventListener("load", () => {
   els.card.hidden = false;
   els.fallback.hidden = true;
@@ -42,27 +43,34 @@ function render(state) {
 
   document.body.dataset.status = status.id;
 
-  // Only swap the image when the status actually changes (avoids reload flicker
-  // on every poll).
   if (els.card.dataset.status !== status.id) {
     els.card.dataset.status = status.id;
     els.card.alt = `${status.label} — ${status.tagline}`;
     els.card.src = status.image;
   }
 
-  // Fallback content (shown only if the image can't load).
   els.icon.textContent = status.icon;
   els.status.textContent = status.label;
   els.tagline.textContent = status.tagline;
 
-  // The card already shows the default tagline, so only surface a *custom*
-  // message, as a caption banner.
   if (state.message) {
     els.message.textContent = state.message;
     els.message.hidden = false;
   } else {
     els.message.textContent = "";
     els.message.hidden = true;
+  }
+
+  // Manager (Joe) — only shown when he's not simply "Available".
+  const manager = state.manager || { state: "available", note: "" };
+  if (manager.state && manager.state !== "available") {
+    const mInfo = getManager(manager.state);
+    els.managerBadge.dataset.mstate = manager.state;
+    els.managerBadgeText.textContent =
+      `👤 Joe — ${mInfo.label}` + (manager.note ? ` · ${manager.note}` : "");
+    els.managerBadge.hidden = false;
+  } else {
+    els.managerBadge.hidden = true;
   }
 
   els.live.textContent = `${status.label}. ${state.message || status.tagline}`;

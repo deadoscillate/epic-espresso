@@ -64,6 +64,15 @@
   color: var(--accent);
 }
 
+.joe-chip {
+  margin: 0 0 2rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.joe-chip[hidden] {
+  display: none;
+}
+
 /* Navigation cards --------------------------------------------------------- */
 .nav-cards {
   display: grid;

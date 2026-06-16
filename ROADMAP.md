@@ -30,12 +30,14 @@ draft, not a contract.
 - Installable **PWA** (iOS/Android) with an in-page "Install app" button
 - Live connection indicator, last-updated time, custom message banner
 - Espresso-cup app icon + Epic navy/gold theme
+- Network-first service worker (auto-updates so fixes ship without a stale cache)
+- Manager status — "Joe is in a meeting" (manual toggle + optional note)
 
 ---
 
 ## 🔜 Next up
 
-### 1. Manager status — "Joe is in a meeting"  · Effort: **S**
+### ✅ 1. Manager status — "Joe is in a meeting" — shipped
 
 **Goal:** at a glance, know whether Joe (manager) is free, in a meeting, or out —
 so people know when to catch him (or not).
@@ -61,10 +63,9 @@ CREATE TABLE presence (
 **Approach:** `/api/presence` (GET public, POST PIN-gated) mirroring `/api/status`;
 admin gains a "Manager" section; board polls and renders the badge.
 
-**Open questions**
-- Just Joe, or any number of people (the schema already allows more)?
-- Manual only for now? (Auto version is a Later item — see calendar integration.)
-- Show the "back at" time, or keep it to a simple state?
+**Decided & shipped:** Joe only (the bar is in his office); manual toggle with an
+optional "back at" note; shown as a badge on the board and landing. Auto/calendar
+sourcing remains a Later item.
 
 ### 2. Order tracker — names + drinks  · Effort: **M**
 
@@ -95,11 +96,9 @@ CREATE TABLE orders (
 admin "Orders" panel; board widget polls the list. Auto-clear `done`/`ready`
 orders after N minutes to keep it tidy.
 
-**Open questions**
-- Drink **presets** (tap to add) vs freeform text? (Presets = faster, fewer typos.)
-- Show orders **on the main board** or a **separate `/orders` screen**?
-- Any "your order is ready" moment — a chime/flash on the board?
-- Roughly how many orders in flight at once (affects layout)?
+**Decided:** name-only entry (no drink field); Queued → Making → Ready; with a
+"your order is ready" flash/chime on the board.
+**Still open:** show on the main board, or a separate `/orders` screen?
 
 ### 3. Auto-reset after inactivity  · Effort: **S**
 
@@ -117,6 +116,14 @@ as a committed SVG.
 
 ## 🧊 Later
 
+- **AI-generated daily card art** — regenerate Epic-chan's pose/scene each day
+  with an image model (e.g. OpenAI `gpt-image-1`). Feasible, with caveats:
+  generate *text-free* scene art and keep the status word/tagline as the current
+  HTML overlay (models render baked-in text unreliably); hold Epic-chan
+  consistent with a fixed character prompt + a reference image; run on a daily
+  **Vercel Cron**, store output in **Vercel Blob**, and fall back to the current
+  cards on any failure. Needs `OPENAI_API_KEY`; ~7 images/day at a few cents
+  each. **L**
 - **Calendar-driven manager status** — auto-set Joe's "in a meeting" from
   Microsoft 365 / Outlook (Graph API) or Teams presence, server-side poll. **L**
 - **Notifications** — post to Teams/Discord on key changes ("☕ Coffee is READY",
