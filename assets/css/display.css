@@ -74,12 +74,60 @@
   margin: 0;
   text-transform: uppercase;
 }
-.display__message {
+/* Big "Epic Brew" status card (the hero) */
+.display__figure {
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.display__card {
+  max-width: min(96vw, 1280px);
+  max-height: 78vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 20px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
+}
+.display__card[hidden] {
+  display: none;
+}
+
+/* Emoji/text fallback if a card image is missing */
+.display__fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.5rem, 2vh, 1.5rem);
+}
+.display__fallback[hidden] {
+  display: none;
+}
+.display__tagline {
   font-size: clamp(1.1rem, 3.4vw, 2.4rem);
   font-weight: 600;
   color: var(--theme-dim, var(--text-dim));
   max-width: 22ch;
-  margin: 0 auto;
+  margin: 0;
+}
+
+/* Custom message banner (only shown when an admin sets one) */
+.display__message {
+  margin: 0.5rem auto 0;
+  padding: 0.5rem 1.2rem;
+  max-width: min(92vw, 60ch);
+  font-size: clamp(1rem, 2.6vw, 1.8rem);
+  font-weight: 700;
+  color: var(--theme-fg, var(--text));
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 999px;
+}
+.display__message[hidden] {
+  display: none;
 }
 
 /* Footer: last-updated */

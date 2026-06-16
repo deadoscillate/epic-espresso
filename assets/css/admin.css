@@ -54,9 +54,23 @@
   background: var(--surface);
   box-shadow: var(--shadow);
 }
+.current__thumb {
+  width: 132px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 10px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow);
+}
+.current__thumb[hidden] {
+  display: none;
+}
 .current__icon {
   font-size: 2.6rem;
   line-height: 1;
+}
+.current__icon[hidden] {
+  display: none;
 }
 .current__body {
   min-width: 0;

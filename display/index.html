@@ -47,10 +47,17 @@
         </div>
       </div>
 
-      <div class="display__stage" role="status" aria-live="polite">
-        <div class="display__icon" id="display-icon" aria-hidden="true">🌙</div>
-        <h2 class="display__status" id="display-status">—</h2>
-        <p class="display__message" id="display-message">—</p>
+      <div class="display__stage">
+        <figure class="display__figure">
+          <img class="display__card" id="display-card" alt="" hidden />
+          <div class="display__fallback" id="display-fallback" hidden>
+            <div class="display__icon" id="display-icon" aria-hidden="true">🌙</div>
+            <h2 class="display__status" id="display-status">—</h2>
+            <p class="display__tagline" id="display-tagline"></p>
+          </div>
+        </figure>
+        <p class="display__message" id="display-message" hidden></p>
+        <p class="visually-hidden" id="display-live" role="status" aria-live="polite"></p>
       </div>
 
       <footer class="display__footer">

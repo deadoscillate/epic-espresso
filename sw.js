@@ -1,7 +1,7 @@
 // Service worker — makes the app installable and resilient offline.
 // Strategy: never cache the live API; cache-first for static assets;
 // network-first for navigations (so updates show), falling back to cache.
-const CACHE = "bsmeb-v1";
+const CACHE = "bsmeb-v2";
 const SHELL = [
   "/",
   "/display",
@@ -20,6 +20,13 @@ const SHELL = [
   "/assets/js/admin.js",
   "/assets/img/epic-icon.svg",
   "/assets/img/icon-192.png",
+  "/assets/img/status/brewing.webp",
+  "/assets/img/status/ready.webp",
+  "/assets/img/status/empty.webp",
+  "/assets/img/status/cleaning.webp",
+  "/assets/img/status/closed.webp",
+  "/assets/img/status/beans_low.webp",
+  "/assets/img/status/maintenance.webp",
 ];
 
 self.addEventListener("install", (event) => {

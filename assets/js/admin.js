@@ -14,6 +14,7 @@ const els = {
   message: document.getElementById("message"),
   messageCount: document.getElementById("message-count"),
   applyMessage: document.getElementById("apply-message"),
+  currentThumb: document.getElementById("current-thumb"),
   currentIcon: document.getElementById("current-icon"),
   currentLabel: document.getElementById("current-label"),
   currentMessage: document.getElementById("current-message"),
@@ -52,6 +53,16 @@ for (const id of STATUS_ORDER) {
   els.grid.appendChild(btn);
   buttons.set(id, btn);
 }
+
+// Show the emoji instead if the thumbnail image can't load.
+els.currentThumb.addEventListener("load", () => {
+  els.currentThumb.hidden = false;
+  els.currentIcon.hidden = true;
+});
+els.currentThumb.addEventListener("error", () => {
+  els.currentThumb.hidden = true;
+  els.currentIcon.hidden = false;
+});
 
 // --- Controls enable/disable ------------------------------------------------
 function updateControls() {
@@ -166,7 +177,12 @@ function render(state) {
     btn.setAttribute("aria-pressed", String(active));
   });
 
-  els.currentIcon.textContent = status.icon;
+  if (els.currentThumb.dataset.status !== status.id) {
+    els.currentThumb.dataset.status = status.id;
+    els.currentThumb.alt = status.label;
+    els.currentThumb.src = status.image;
+  }
+  els.currentIcon.textContent = status.icon; // fallback if the thumbnail fails
   els.currentLabel.textContent = status.label;
   els.currentMessage.textContent = shownMessage;
   els.updatedAbs.textContent = formatClock(state.updatedAt);

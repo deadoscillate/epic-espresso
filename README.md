@@ -205,6 +205,10 @@ red = reconnecting.
   (`icon-192/512`, `icon-maskable-512`, `apple-touch-icon`, `favicon-32`) with
   any SVG→PNG tool. The current icon is an espresso cup in Epic colours —
   intentionally distinct from the Epic Charter Schools logo.
+- **Status card art:** the board images live in `assets/img/status/<id>.webp`
+  (~1280px, ~85 KB each). Replace one with the same name to reskin a status.
+  They're shown full-size on the board and as a thumbnail in admin; if a card is
+  missing, the app falls back to the emoji + status word.
 
 ---
 
