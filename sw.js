@@ -1,7 +1,7 @@
 // Service worker — makes the app installable and resilient offline.
 // Strategy: never cache the live API; cache-first for static assets;
 // network-first for navigations (so updates show), falling back to cache.
-const CACHE = "bsmeb-v2";
+const CACHE = "bsmeb-v3";
 const SHELL = [
   "/",
   "/display",
@@ -15,6 +15,7 @@ const SHELL = [
   "/assets/js/util.js",
   "/assets/js/store.js",
   "/assets/js/pwa.js",
+  "/assets/js/install.js",
   "/assets/js/landing.js",
   "/assets/js/display.js",
   "/assets/js/admin.js",

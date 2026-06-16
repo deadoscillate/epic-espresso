@@ -2,6 +2,7 @@
 // Fullscreen warehouse display
 // -----------------------------------------------------------------------------
 import "./pwa.js";
+import { setupInstallButton } from "./install.js";
 import { createCoffeeStore } from "./store.js";
 import { getStatus } from "./statuses.js";
 import { formatClock, formatRelative, renderConnection } from "./util.js";
@@ -105,6 +106,8 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // --- Wire up & go ------------------------------------------------------------
+setupInstallButton(document.getElementById("install-btn"));
+
 store.onConnection((conn) => renderConnection(els.connection, conn));
 store.onChange(render);
 

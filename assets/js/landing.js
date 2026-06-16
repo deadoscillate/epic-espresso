@@ -2,6 +2,7 @@
 // Landing page — shows a small live "Now:" chip so the homepage feels alive.
 // -----------------------------------------------------------------------------
 import "./pwa.js";
+import { setupInstallButton } from "./install.js";
 import { createCoffeeStore } from "./store.js";
 import { getStatus } from "./statuses.js";
 
@@ -18,4 +19,8 @@ store.onChange((state) => {
   chip.hidden = false;
 });
 
+setupInstallButton(
+  document.getElementById("install-btn"),
+  document.getElementById("install-hint")
+);
 store.init();

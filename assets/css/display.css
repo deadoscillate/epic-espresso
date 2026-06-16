@@ -51,6 +51,9 @@
 .icon-btn:hover {
   background: rgba(0, 0, 0, 0.35);
 }
+.icon-btn[hidden] {
+  display: none;
+}
 
 /* Centre stage */
 .display__stage {
