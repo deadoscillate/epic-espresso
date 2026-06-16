@@ -1,7 +1,7 @@
-// Service worker — makes the app installable and resilient offline.
-// Strategy: never cache the live API; cache-first for static assets;
-// network-first for navigations (so updates show), falling back to cache.
-const CACHE = "bsmeb-v4";
+// Service worker — installable + offline-capable.
+// Network-first for everything (so updates always show when online); the cache
+// is only a fallback for offline. The live API is never intercepted.
+const CACHE = "bsmeb-v5";
 const SHELL = [
   "/",
   "/display",
@@ -34,7 +34,6 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE);
-      // Tolerate individual misses (some paths differ per deployment role).
       await Promise.all(SHELL.map((url) => cache.add(url).catch(() => {})));
       self.skipWaiting();
     })()
@@ -56,30 +55,16 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return; // never intercept writes
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/")) return; // always hit the network for live data
+  if (url.pathname.startsWith("/api/")) return; // live data: always the network
 
-  // Static assets: cache-first.
-  if (url.pathname.startsWith("/assets/")) {
-    event.respondWith(
-      caches.match(request).then(
-        (hit) =>
-          hit ||
-          fetch(request).then((res) => {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(request, copy));
-            return res;
-          })
-      )
-    );
-    return;
-  }
-
-  // Navigations / everything else: network-first, fall back to cache.
+  // Network-first: fresh when online, cache as a fallback when offline.
   event.respondWith(
     fetch(request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(request, copy));
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, copy));
+        }
         return res;
       })
       .catch(() => caches.match(request).then((hit) => hit || caches.match("/display")))
