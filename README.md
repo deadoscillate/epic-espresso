@@ -189,9 +189,21 @@ subpath.)
 
 ### Vercel
 
-- “Add New → Project,” import the repo.
-- Framework preset: **Other**. No build command; **output directory** is the
-  root. Deploy.
+This repo includes a `vercel.json`, so deploys are zero-config (static site,
+no build step, with light caching on `/assets`).
+
+1. [vercel.com](https://vercel.com) → **Add New → Project → Import Git
+   Repository** → pick `deadoscillate/epic-espresso` (grant the Vercel GitHub
+   app access to the repo when prompted).
+2. **Framework Preset: Other**, **Root Directory: `./`** — leave the Build &
+   Output settings empty. Click **Deploy**.
+3. Vercel then auto-deploys on every push: your **Production Branch** (default
+   `main`) publishes to the production URL, while other branches get **Preview**
+   deployments. To ship this work to production, merge it into `main` — or set
+   the Production Branch under **Project → Settings → Git**.
+
+Prefer the CLI? `npm i -g vercel`, then run `vercel` (link/create the project)
+and `vercel --prod` from the repo root.
 
 ---
 
