@@ -6,7 +6,7 @@ Brendan Spurlock Memorial Espresso Bar").
 A lightweight, installable status sign. Staff set the current coffee status from
 a phone (the **Admin** app); a warehouse tablet or monitor shows it on the
 **Status board**. It runs entirely on **Vercel** — a static front-end plus one
-tiny serverless function backed by **Vercel KV** — and installs on iOS and
+tiny serverless function backed by **Neon Postgres** — and installs on iOS and
 Android as a **PWA** (Add to Home Screen). No Firebase, no app stores, and
 **nothing to install or run on your own computer.**
 
@@ -26,7 +26,7 @@ each with its own icon, default message, and full-screen theme.
 - [How it works](#how-it-works)
 - [Deploy on Vercel (no local tools)](#deploy-on-vercel-no-local-tools)
   - [1. Status board (public)](#1-status-board-public-project)
-  - [2. Vercel KV + admin PIN](#2-add-vercel-kv--the-admin-pin)
+  - [2. Neon Postgres + admin PIN](#2-add-neon-postgres--the-admin-pin)
   - [3. Admin (separate URL)](#3-admin-on-a-separate-url-second-project)
 - [Environment variables](#environment-variables)
 - [Install as an app (iOS / Android)](#install-as-an-app-ios--android)
@@ -48,16 +48,16 @@ One tiny shared state object drives everything:
 ```
 
 - **Storage:** a single serverless function, `/api/status`, reads/writes that
-  object in **Vercel KV** (Redis). `GET` is public; `POST` requires the admin
+  object in **Neon** (serverless Postgres). `GET` is public; `POST` requires the admin
   **PIN** and is rejected entirely on the public deployment.
 - **Live updates:** the board and admin **poll** `/api/status` every few seconds
   (Vercel has no built-in realtime push; polling is simple and reliable for a
   status sign). The service worker never caches the API, so reads stay live.
 - **Separation:** the front-end is one codebase deployed as **two Vercel
-  projects** that share the same KV store. An `APP_ROLE` env var + a 6-line
+  projects** that share the same Neon database. An `APP_ROLE` env var + a 6-line
   Edge Middleware make the public project read-only and hide `/admin`, while the
   admin project serves the PIN-gated panel. Two URLs, one repo, no duplication.
-- **Fallback:** if the API isn't reachable (e.g. KV not configured yet), the app
+- **Fallback:** if the API isn't reachable (e.g. the database isn't set up yet), the app
   drops to a clearly-labelled **demo mode** (localStorage, single device).
 
 All of this is wired through one abstraction — `assets/js/store.js` — so the UI
@@ -78,15 +78,16 @@ website. You don't need Node, the Vercel CLI, or anything on your machine.
 3. **Framework Preset: Other**, **Root Directory: `./`**. Leave Build & Output
    empty. **Deploy.** You now have `https://<project>.vercel.app`.
 
-### 2. Add Vercel KV + the admin PIN
+### 2. Add Neon Postgres + the admin PIN
 
-1. In the project → **Storage → Create Database → KV (Redis)** (a.k.a. Upstash
-   Redis from the Marketplace). Accept the free plan and **Connect** it to this
-   project. This injects `KV_REST_API_URL` / `KV_REST_API_TOKEN` automatically.
+1. In the project → **Storage → Create Database → Neon (Postgres)** from the
+   Marketplace. Accept the **Free** plan and **Connect** it to this project.
+   This injects `DATABASE_URL` automatically (the table is created on first
+   use — no migration step).
 2. Project → **Settings → Environment Variables**, add:
    - `ADMIN_PIN` = your chosen passcode (e.g. `4827`)
    - `APP_ROLE` = `public`  ← makes this deployment read-only and hides `/admin`
-3. **Redeploy** (Deployments → ⋯ → Redeploy) so the new env vars take effect.
+3. **Redeploy** (Deployments → ⋯ → Redeploy) so the new settings take effect.
 
 The status board is now live. `/admin` here redirects to the board.
 
@@ -94,9 +95,9 @@ The status board is now live. `/admin` here redirects to the board.
 
 1. **Add New → Project → Import** the **same repo** again. Name it e.g.
    `epic-espresso-admin`. Framework **Other**, Root `./`. **Deploy.**
-2. **Storage:** connect the **same KV database** you created in step 2 to this
+2. **Storage:** connect the **same Neon database** you created in step 2 to this
    project (Storage → Connect Database → pick the existing one). Sharing the
-   store is what keeps both URLs in sync.
+   database is what keeps both URLs in sync.
 3. **Settings → Environment Variables:**
    - `ADMIN_PIN` = the **same** passcode as the public project
    - `APP_ROLE` = `admin`
@@ -115,12 +116,12 @@ Both projects auto-deploy on every push to `main`.
 
 | Variable                          | Where                | Purpose                                                  |
 | --------------------------------- | -------------------- | -------------------------------------------------------- |
-| `KV_REST_API_URL` / `_TOKEN`      | both projects        | Vercel KV connection (added automatically by Storage)    |
+| `DATABASE_URL`                    | both projects        | Neon connection string (added automatically by Storage)  |
 | `ADMIN_PIN`                       | admin project (req.) | Passcode required to write. Set on public too if single-project |
 | `APP_ROLE`                        | both                 | `public` = read-only + admin hidden; `admin`/unset = full |
 
-`UPSTASH_REDIS_REST_URL` / `_TOKEN` are also accepted if your store uses those
-names. No secrets ever live in the repo.
+`POSTGRES_URL` / `DATABASE_URL_UNPOOLED` are also accepted. No secrets ever live
+in the repo.
 
 ---
 
@@ -177,7 +178,7 @@ red = reconnecting.
 │   ├── index.html          # Admin panel (/admin)
 │   └── manifest.webmanifest# PWA manifest for the admin app
 ├── display/index.html      # Status board (/display)
-├── api/status.js           # Serverless: GET/POST shared state via Vercel KV
+├── api/status.js           # Serverless: GET/POST shared state in Neon Postgres
 ├── middleware.js           # Edge: hides /admin on the public (APP_ROLE) deploy
 ├── manifest.webmanifest    # PWA manifest for the public app
 ├── sw.js                   # Service worker (installable + offline shell)
@@ -188,7 +189,8 @@ red = reconnecting.
 │   │   ├── statuses.js     # Status catalogue (labels, icons, taglines)
 │   │   ├── store.js        # Storage abstraction (live API | demo)
 │   │   ├── util.js, pwa.js, landing.js, admin.js, display.js
-│   └── img/                # epic-icon.svg + generated PNG app icons
+│   └── img/                # icons + img/status/ (Epic Brew card art, WebP)
+├── package.json            # Neon driver dependency (Vercel installs it)
 └── vercel.json
 ```
 
@@ -214,12 +216,12 @@ red = reconnecting.
 
 ## Demo mode & optional local dev
 
-With no KV configured, the app runs in **demo mode**: state is stored in the
+With no database configured, the app runs in **demo mode**: state is stored in the
 browser's localStorage (single device, syncs across tabs). It's the zero-config
 fallback — fine for a quick look, not for driving a separate board.
 
 Local development is **optional** (you don't need it to deploy). If you want it,
-`npx vercel dev` runs the functions + KV locally; a plain static server
+`npx vercel dev` runs the functions + database locally; a plain static server
 (`npx serve .`) serves the pages in demo mode only (no `/api`).
 
 ---

@@ -1,35 +1,67 @@
 // -----------------------------------------------------------------------------
-// /api/status — the shared coffee state, backed by Vercel KV (Upstash Redis)
+// /api/status — the shared coffee state, backed by Neon (serverless Postgres)
 // -----------------------------------------------------------------------------
 //   GET  -> returns { status, message, updatedAt }            (public, read-only)
 //   POST -> updates the state; requires the admin PIN          (write)
 //           body: { status, message, pin }     or  { pin, verify: true }
 //
-// Dependency-free: talks to the KV REST API with `fetch` (Node 18+), so there's
-// no build step. Configured entirely through Vercel environment variables:
-//   KV_REST_API_URL / KV_REST_API_TOKEN   (auto-added by the Vercel KV / Redis
-//       integration; UPSTASH_REDIS_REST_URL / _TOKEN are also accepted)
+// State lives in a single-row table `coffee_state` (created on demand, so
+// there's no migration step). Configured entirely via Vercel environment
+// variables:
+//   DATABASE_URL  -> Neon connection string (added by the Vercel Neon
+//                    integration; POSTGRES_URL is also accepted)
 //   ADMIN_PIN     -> passcode required to write
 //   APP_ROLE      -> "public" makes this deployment read-only (hides admin)
 // -----------------------------------------------------------------------------
 
-const KEY = "coffee";
+import { neon } from "@neondatabase/serverless";
+
 const MESSAGE_MAX = 280;
 const STATUSES = ["brewing", "ready", "empty", "cleaning", "closed", "beans_low", "maintenance"];
 const DEFAULT_STATE = { status: "closed", message: "", updatedAt: null };
 
-const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+const DB_URL =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.DATABASE_URL_UNPOOLED ||
+  process.env.POSTGRES_PRISMA_URL;
 
-// Run a single Redis command through the Upstash REST API.
-async function kv(command) {
-  const res = await fetch(KV_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(command),
-  });
-  if (!res.ok) throw new Error(`KV ${res.status}`);
-  return (await res.json()).result;
+const sql = DB_URL ? neon(DB_URL) : null;
+
+let tableReady = false;
+async function ensureTable(db) {
+  if (tableReady) return;
+  await db`CREATE TABLE IF NOT EXISTS coffee_state (
+    id int PRIMARY KEY,
+    status text NOT NULL,
+    message text NOT NULL DEFAULT '',
+    updated_at bigint
+  )`;
+  tableReady = true;
+}
+
+async function readState(db) {
+  await ensureTable(db);
+  const rows = await db`SELECT status, message, updated_at FROM coffee_state WHERE id = 1`;
+  if (!rows.length) return { ...DEFAULT_STATE };
+  const row = rows[0];
+  return {
+    status: row.status,
+    message: row.message ?? "",
+    updatedAt: row.updated_at == null ? null : Number(row.updated_at),
+  };
+}
+
+async function writeState(db, status, message) {
+  await ensureTable(db);
+  const updatedAt = Date.now();
+  await db`INSERT INTO coffee_state (id, status, message, updated_at)
+           VALUES (1, ${status}, ${message}, ${updatedAt})
+           ON CONFLICT (id) DO UPDATE
+             SET status = EXCLUDED.status,
+                 message = EXCLUDED.message,
+                 updated_at = EXCLUDED.updated_at`;
+  return { status, message, updatedAt };
 }
 
 function send(res, code, obj) {
@@ -55,7 +87,8 @@ function pinMatches(a, b) {
   return diff === 0;
 }
 
-module.exports = async (req, res) => {
+// Exported for testing; `db` is the Neon tagged-template `sql` function.
+export async function handle(req, res, db) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "content-type");
@@ -66,17 +99,16 @@ module.exports = async (req, res) => {
     return res.end();
   }
 
-  // Without a KV store the live backend can't work; signal "unconfigured" so the
+  // Without a database the live backend can't work; signal "unconfigured" so the
   // front-end falls back to demo mode cleanly.
-  if (!KV_URL || !KV_TOKEN) return send(res, 503, { error: "storage_not_configured" });
+  if (!db) return send(res, 503, { error: "storage_not_configured" });
 
   if (req.method === "GET") {
     try {
-      const raw = await kv(["GET", KEY]);
-      return send(res, 200, raw ? JSON.parse(raw) : DEFAULT_STATE);
+      return send(res, 200, await readState(db));
     } catch (err) {
-      console.error("[api] KV read failed:", err);
-      return send(res, 502, { error: "kv_read_failed" });
+      console.error("[api] DB read failed:", err);
+      return send(res, 502, { error: "db_read_failed" });
     }
   }
 
@@ -97,25 +129,20 @@ module.exports = async (req, res) => {
     if (!pinMatches(String(body.pin || ""), adminPin)) {
       return send(res, 401, { error: "bad_pin" });
     }
-    // PIN-only check used by the admin gate.
-    if (body.verify) return send(res, 200, { ok: true });
+    if (body.verify) return send(res, 200, { ok: true }); // PIN-only check
 
     if (!STATUSES.includes(body.status)) return send(res, 400, { error: "bad_status" });
 
-    const state = {
-      status: body.status,
-      message: String(body.message || "").trim().slice(0, MESSAGE_MAX),
-      updatedAt: Date.now(),
-    };
-
+    const message = String(body.message || "").trim().slice(0, MESSAGE_MAX);
     try {
-      await kv(["SET", KEY, JSON.stringify(state)]);
+      return send(res, 200, await writeState(db, body.status, message));
     } catch (err) {
-      console.error("[api] KV write failed:", err);
-      return send(res, 502, { error: "kv_write_failed" });
+      console.error("[api] DB write failed:", err);
+      return send(res, 502, { error: "db_write_failed" });
     }
-    return send(res, 200, state);
   }
 
   return send(res, 405, { error: "method_not_allowed" });
-};
+}
+
+export default (req, res) => handle(req, res, sql);

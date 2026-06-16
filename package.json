@@ -1,0 +1,11 @@
+{
+  "name": "epic-espresso",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Coffee status board for the Epic Espresso Bar (Vercel + Neon Postgres, PWA).",
+  "license": "MIT",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0"
+  }
+}

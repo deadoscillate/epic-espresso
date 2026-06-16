@@ -11,11 +11,11 @@
 //   await store.init();
 //
 // Backend is chosen automatically at init():
-//   • "live"  — polls the same-origin /api/status (Vercel KV). Used whenever the
+//   • "live"  — polls the same-origin /api/status (Neon Postgres). Used whenever the
 //               API responds. Writes POST to the API with the admin PIN.
 //   • "demo"  — localStorage fallback (single device, syncs across tabs) used
 //               when the API isn't available (e.g. opened as a static file, or
-//               KV isn't configured yet). Clearly labelled in the UI.
+//               the database isn't configured yet). Clearly labelled in the UI.
 //
 // To add another backend later, implement a start function that wires up the
 // same setState/setConnection callbacks and assigns applyWrite/verify.
@@ -189,7 +189,7 @@ export function createCoffeeStore() {
           startApi();
           return;
         }
-        throw new Error(`api ${res.status}`); // 503 (no KV) etc. -> demo
+        throw new Error(`api ${res.status}`); // 503 (no database) etc. -> demo
       } catch {
         startDemo();
       }

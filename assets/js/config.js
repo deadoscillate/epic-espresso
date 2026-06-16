@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// Front-end configuration (no secrets here — the PIN and KV creds live in
+// Front-end configuration (no secrets here — the PIN and database creds live in
 // Vercel environment variables, never in client code).
 // -----------------------------------------------------------------------------
 
