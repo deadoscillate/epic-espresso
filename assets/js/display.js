@@ -106,7 +106,10 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // --- Wire up & go ------------------------------------------------------------
-setupInstallButton(document.getElementById("install-btn"));
+setupInstallButton(
+  document.getElementById("install-btn"),
+  document.getElementById("install-hint")
+);
 
 store.onConnection((conn) => renderConnection(els.connection, conn));
 store.onChange(render);

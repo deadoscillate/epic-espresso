@@ -1,7 +1,7 @@
 // Service worker — makes the app installable and resilient offline.
 // Strategy: never cache the live API; cache-first for static assets;
 // network-first for navigations (so updates show), falling back to cache.
-const CACHE = "bsmeb-v3";
+const CACHE = "bsmeb-v4";
 const SHELL = [
   "/",
   "/display",

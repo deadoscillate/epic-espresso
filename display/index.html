@@ -8,6 +8,14 @@
     />
     <title>Epic Espresso Bar — Status</title>
     <meta name="description" content="Live coffee status board." />
+    <script>
+      // Capture the install prompt as early as possible so the button can use it.
+      window.__deferredInstall = null;
+      addEventListener("beforeinstallprompt", function (e) {
+        e.preventDefault();
+        window.__deferredInstall = e;
+      });
+    </script>
 
     <link rel="icon" href="/assets/img/favicon-32.png" sizes="32x32" />
     <link rel="icon" href="/assets/img/epic-icon.svg" type="image/svg+xml" />
@@ -47,6 +55,8 @@
           </button>
         </div>
       </div>
+
+      <p class="install-hint" id="install-hint" hidden></p>
 
       <div class="display__stage">
         <figure class="display__figure">

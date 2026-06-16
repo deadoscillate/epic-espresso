@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Epic Espresso Bar</title>
     <meta name="description" content="Live coffee status board for the Epic Espresso Bar." />
+    <script>
+      // Capture the install prompt as early as possible so the button can use it.
+      window.__deferredInstall = null;
+      addEventListener("beforeinstallprompt", function (e) {
+        e.preventDefault();
+        window.__deferredInstall = e;
+      });
+    </script>
 
     <link rel="icon" href="/assets/img/favicon-32.png" sizes="32x32" />
     <link rel="icon" href="/assets/img/epic-icon.svg" type="image/svg+xml" />
