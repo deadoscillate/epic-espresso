@@ -226,15 +226,11 @@ Local development is **optional** (you don't need it to deploy). If you want it,
 
 ---
 
-## Future enhancements
+## Roadmap
 
-- 🐣 **Epic-chan animated mascot** on the board.
-- 🎬 **Per-status WebM/MP4 animations** (swap the emoji for short loops).
-- 🔳 **QR code** on the board linking to itself / a mobile status view.
-- 🔔 **Teams / Discord notification** on status change (webhook from the API).
-- ⏲️ **Scheduled auto-reset** (revert to *Closed* / *Empty* after 30 min).
-- 🔘 **Physical ESP32 button** that POSTs to `/api/status` to flip status.
-- 🔐 **Per-user logins / SSO** instead of a shared PIN.
+Planned features — a manager "in a meeting" status, an order tracker (names +
+drinks), auto-reset, a QR install code, Teams/Discord notifications, an animated
+mascot, and more — live in **[ROADMAP.md](ROADMAP.md)**.
 
 ---
 
