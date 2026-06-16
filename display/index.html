@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Display · Espresso Bar</title>
+    <meta name="description" content="Fullscreen coffee status board." />
+    <link rel="stylesheet" href="../assets/css/base.css" />
+    <link rel="stylesheet" href="../assets/css/display.css" />
+  </head>
+  <body data-status="closed">
+    <main class="display">
+      <div class="display__top">
+        <h1 class="display__title">The Brendan Spurlock Memorial Espresso Bar</h1>
+        <div class="display__controls">
+          <span class="conn" id="connection" role="status" aria-live="polite">
+            <span class="conn-dot" aria-hidden="true"></span>
+            <span class="conn-text">Connecting…</span>
+          </span>
+          <button
+            type="button"
+            class="icon-btn"
+            id="fullscreen-btn"
+            aria-pressed="false"
+            aria-label="Toggle fullscreen"
+            title="Toggle fullscreen"
+          >
+            ⛶
+          </button>
+        </div>
+      </div>
+
+      <div class="display__stage" role="status" aria-live="polite">
+        <div class="display__icon" id="display-icon" aria-hidden="true">🌙</div>
+        <h2 class="display__status" id="display-status">—</h2>
+        <p class="display__message" id="display-message">—</p>
+      </div>
+
+      <footer class="display__footer">
+        <span>Updated <span id="updated-abs">—</span></span>
+        <span class="dot" aria-hidden="true">•</span>
+        <span id="updated-rel">never</span>
+      </footer>
+    </main>
+
+    <script type="module" src="../assets/js/display.js"></script>
+  </body>
+</html>

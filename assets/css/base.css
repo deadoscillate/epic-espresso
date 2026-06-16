@@ -1,0 +1,202 @@
+/* ===========================================================================
+   Base — design tokens, reset, shared components, per-status themes
+   ===========================================================================
+   Theming works by setting `data-status` on <body>. Each status block below
+   exposes a small set of CSS variables (--accent, --theme-bg, --theme-fg…)
+   that the admin and display stylesheets consume. Change a colour here and it
+   updates everywhere.
+   ======================================================================== */
+
+:root {
+  /* Neutral "ops console" palette (stable chrome shared by every page). */
+  --bg: #0b1020;
+  --surface: #151b2e;
+  --surface-2: #1d2540;
+  --border: #2a3352;
+  --text: #f4f6fb;
+  --text-dim: #9aa6c4;
+
+  /* Sensible default accent before a status loads. */
+  --accent: #64748b;
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --maxw: 960px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+/* Accessibility helpers ---------------------------------------------------- */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Brand / headings --------------------------------------------------------- */
+.brand {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.tagline {
+  color: var(--text-dim);
+  margin: 0;
+}
+
+/* Generic button ----------------------------------------------------------- */
+.btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.7em 1.1em;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Connection indicator (used on every page) -------------------------------- */
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.4em 0.8em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.conn-dot {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: #eab308; /* default: amber */
+  box-shadow: 0 0 0 0 currentColor;
+  animation: conn-pulse 2s infinite;
+}
+.conn[data-mode="firebase"][data-online="true"] .conn-dot {
+  background: #22c55e; /* live */
+}
+.conn[data-mode="firebase"][data-online="false"] .conn-dot {
+  background: #ef4444; /* reconnecting / error */
+}
+@keyframes conn-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.25);
+  }
+  70% {
+    box-shadow: 0 0 0 0.5em rgba(255, 255, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conn-dot {
+    animation: none;
+  }
+}
+
+/* ===========================================================================
+   Per-status themes
+   ======================================================================== */
+body[data-status="brewing"] {
+  --accent: #fbbf24;
+  --theme-bg: linear-gradient(135deg, #b45309, #7c2d12);
+  --theme-fg: #fff7ed;
+  --theme-dim: #fed7aa;
+}
+body[data-status="ready"] {
+  --accent: #4ade80;
+  --theme-bg: linear-gradient(135deg, #22c55e, #15803d);
+  --theme-fg: #f0fdf4;
+  --theme-dim: #bbf7d0;
+}
+body[data-status="empty"] {
+  --accent: #f87171;
+  --theme-bg: linear-gradient(135deg, #7f1d1d, #450a0a);
+  --theme-fg: #fef2f2;
+  --theme-dim: #fecaca;
+}
+body[data-status="cleaning"] {
+  --accent: #67e8f9;
+  --theme-bg: linear-gradient(135deg, #0e7490, #155e75);
+  --theme-fg: #ecfeff;
+  --theme-dim: #a5f3fc;
+}
+body[data-status="closed"] {
+  --accent: #94a3b8;
+  --theme-bg: linear-gradient(135deg, #1e293b, #020617);
+  --theme-fg: #e2e8f0;
+  --theme-dim: #94a3b8;
+}
+body[data-status="beans_low"] {
+  --accent: #facc15;
+  --theme-bg: linear-gradient(135deg, #a16207, #713f12);
+  --theme-fg: #fefce8;
+  --theme-dim: #fde68a;
+}
+body[data-status="maintenance"] {
+  --accent: #fb7185;
+  --theme-bg: linear-gradient(135deg, #334155, #0f172a);
+  --theme-fg: #f1f5f9;
+  --theme-dim: #cbd5e1;
+}

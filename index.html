@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Brendan Spurlock Memorial Espresso Bar</title>
+    <meta
+      name="description"
+      content="Live coffee status board for the Epic IT Service Desk Espresso Bar."
+    />
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/landing.css" />
+  </head>
+  <body data-status="closed">
+    <main class="landing">
+      <div class="landing__inner">
+        <p class="eyebrow">Epic IT Service Desk</p>
+        <h1 class="brand">The Brendan Spurlock Memorial Espresso Bar</h1>
+        <p class="tagline">
+          A small, dignified monument to caffeine-driven productivity.
+        </p>
+
+        <div class="live-chip" id="live-chip" hidden>
+          <span class="live-chip__icon" id="live-icon" aria-hidden="true">☕</span>
+          <span>Now: <span class="live-chip__accent" id="live-label">—</span></span>
+        </div>
+
+        <nav class="nav-cards" aria-label="Primary">
+          <a class="nav-card" href="admin/">
+            <div class="nav-card__icon" aria-hidden="true">🎛️</div>
+            <div class="nav-card__title">Admin</div>
+            <p class="nav-card__desc">
+              Control panel for baristas. Set the status and post a message.
+            </p>
+          </a>
+          <a class="nav-card" href="display/">
+            <div class="nav-card__icon" aria-hidden="true">🖥️</div>
+            <div class="nav-card__title">Display</div>
+            <p class="nav-card__desc">
+              Fullscreen status board for the warehouse tablet or monitor.
+            </p>
+          </a>
+        </nav>
+
+        <p class="landing__footer">
+          Tip: open <strong>Display</strong> on the warehouse screen and
+          <strong>Admin</strong> on your phone.
+        </p>
+      </div>
+    </main>
+
+    <script type="module" src="assets/js/landing.js"></script>
+  </body>
+</html>

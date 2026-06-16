@@ -1,0 +1,232 @@
+/* Admin control panel ====================================================== */
+.admin {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 4rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0 1.5rem;
+}
+.topbar__home {
+  text-decoration: none;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.topbar__home:hover {
+  color: var(--text);
+}
+
+.admin__head {
+  margin-bottom: 1.5rem;
+}
+.admin__head .brand {
+  font-size: clamp(1.5rem, 4vw, 2.1rem);
+}
+.admin__head .tagline {
+  margin-top: 0.35rem;
+}
+
+/* "Currently live" summary card -------------------------------------------- */
+.current {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1.75rem;
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.current__icon {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+.current__body {
+  min-width: 0;
+}
+.current__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.current__label {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin: 0.1rem 0;
+}
+.current__message {
+  color: var(--text-dim);
+  margin: 0;
+}
+.current__updated {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+/* Section labels ----------------------------------------------------------- */
+.section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin: 0 0 0.75rem;
+}
+
+/* Status button grid ------------------------------------------------------- */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 2rem;
+}
+.status-btn {
+  --btn: var(--border);
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 120px;
+  padding: 1rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.status-btn:hover:not(:disabled) {
+  border-color: var(--btn);
+  transform: translateY(-2px);
+}
+.status-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+.status-btn:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+.status-btn__icon {
+  font-size: 2.1rem;
+  line-height: 1;
+}
+.status-btn__label {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.status-btn.is-active {
+  border-color: var(--btn);
+  background: color-mix(in srgb, var(--btn) 18%, var(--surface));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--btn) 25%, transparent);
+}
+.status-btn.is-active::after {
+  content: "● LIVE";
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--btn);
+}
+
+/* Per-button accent colours (mirror the display themes). */
+.status-btn[data-status="brewing"]     { --btn: #fbbf24; }
+.status-btn[data-status="ready"]        { --btn: #4ade80; }
+.status-btn[data-status="empty"]        { --btn: #f87171; }
+.status-btn[data-status="cleaning"]     { --btn: #67e8f9; }
+.status-btn[data-status="closed"]       { --btn: #94a3b8; }
+.status-btn[data-status="beans_low"]    { --btn: #facc15; }
+.status-btn[data-status="maintenance"]  { --btn: #fb7185; }
+
+/* Custom message field ----------------------------------------------------- */
+.message-field {
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.message-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.message-field textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  padding: 0.75rem 0.9rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.message-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.message-field__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+.message-field__hint {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.message-field .char-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Toast -------------------------------------------------------------------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translate(-50%, 200%);
+  max-width: calc(100vw - 2rem);
+  padding: 0.8rem 1.2rem;
+  border-radius: var(--radius-sm);
+  background: #1f2937;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  z-index: 50;
+}
+.toast.is-visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+.toast[data-kind="ok"] {
+  background: #166534;
+}
+.toast[data-kind="error"] {
+  background: #991b1b;
+}
+
+@media (max-width: 480px) {
+  .status-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .status-btn {
+    min-height: 104px;
+  }
+}

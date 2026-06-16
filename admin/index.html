@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin · Espresso Bar</title>
+    <meta name="description" content="Control panel for the espresso bar status board." />
+    <link rel="stylesheet" href="../assets/css/base.css" />
+    <link rel="stylesheet" href="../assets/css/admin.css" />
+  </head>
+  <body data-status="closed">
+    <div class="admin">
+      <header class="topbar">
+        <a class="topbar__home" href="../">← Home</a>
+        <span class="conn" id="connection" role="status" aria-live="polite">
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span class="conn-text">Connecting…</span>
+        </span>
+      </header>
+
+      <div class="admin__head">
+        <h1 class="brand">Espresso Bar — Admin</h1>
+        <p class="tagline">
+          Set the current coffee status. Changes appear on the warehouse display
+          instantly.
+        </p>
+      </div>
+
+      <!-- Currently live summary -->
+      <section class="current" aria-label="Currently live status">
+        <div class="current__icon" id="current-icon" aria-hidden="true">🌙</div>
+        <div class="current__body">
+          <div class="current__eyebrow">Currently live</div>
+          <div class="current__label" id="current-label">—</div>
+          <p class="current__message" id="current-message">—</p>
+          <div class="current__updated">
+            Last updated <span id="updated-abs">—</span> ·
+            <span id="updated-rel">never</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Status buttons (built by admin.js) -->
+      <h2 class="section-label">Set status</h2>
+      <div
+        class="status-grid"
+        id="status-grid"
+        role="group"
+        aria-label="Coffee statuses"
+      ></div>
+
+      <!-- Optional custom message -->
+      <section class="message-field">
+        <label for="message">Optional message</label>
+        <textarea
+          id="message"
+          maxlength="280"
+          placeholder="Add a custom note (optional)…"
+        ></textarea>
+        <div class="message-field__row">
+          <span class="message-field__hint">
+            Leave blank to use the default note for the selected status.
+          </span>
+          <span class="message-field__hint char-count" id="message-count">0/280</span>
+        </div>
+        <div class="message-field__row">
+          <span></span>
+          <button type="button" class="btn" id="apply-message" disabled>
+            Update message only
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="../assets/js/admin.js"></script>
+  </body>
+</html>

@@ -1,0 +1,100 @@
+/* Landing page ============================================================= */
+.landing {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1.25rem;
+  background: radial-gradient(circle at 50% -10%, #1b2540 0%, var(--bg) 55%);
+}
+
+.landing__inner {
+  width: 100%;
+  max-width: 720px;
+  text-align: center;
+}
+
+.landing .eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 0 0.75rem;
+}
+
+.landing .brand {
+  font-size: clamp(1.9rem, 6vw, 3.4rem);
+  margin-bottom: 0.75rem;
+}
+
+.landing .tagline {
+  font-size: clamp(1rem, 2.5vw, 1.2rem);
+  margin-bottom: 2rem;
+}
+
+/* Live status chip --------------------------------------------------------- */
+.live-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.55em 1em;
+  margin-bottom: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-weight: 600;
+}
+.live-chip__icon {
+  font-size: 1.2em;
+}
+.live-chip__accent {
+  color: var(--accent);
+}
+
+/* Navigation cards --------------------------------------------------------- */
+.nav-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+@media (max-width: 520px) {
+  .nav-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nav-card {
+  display: block;
+  text-decoration: none;
+  text-align: left;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: transform 0.12s ease, border-color 0.15s ease;
+}
+.nav-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+}
+.nav-card__icon {
+  font-size: 2rem;
+}
+.nav-card__title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin: 0.5rem 0 0.25rem;
+}
+.nav-card__desc {
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.landing__footer {
+  margin-top: 2.5rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}

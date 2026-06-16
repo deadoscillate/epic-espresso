@@ -1,0 +1,131 @@
+/* Fullscreen warehouse display ============================================= */
+.display {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  text-align: center;
+  color: var(--theme-fg, var(--text));
+  background: var(--theme-bg, var(--bg));
+  transition: background 0.6s ease, color 0.6s ease;
+  overflow: hidden;
+}
+
+/* Top bar: title + status chrome */
+.display__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.display__title {
+  font-size: clamp(0.95rem, 2.2vw, 1.5rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-align: left;
+  opacity: 0.92;
+  max-width: 18ch;
+}
+.display__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+/* The "icon button" (fullscreen toggle) */
+.icon-btn {
+  appearance: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 1.1rem;
+  color: var(--theme-fg, var(--text));
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+}
+.icon-btn:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Centre stage */
+.display__stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.5rem, 2vh, 1.5rem);
+}
+.display__icon {
+  font-size: clamp(5rem, 26vh, 16rem);
+  line-height: 1;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.35));
+}
+.display__status {
+  font-size: clamp(3rem, 16vw, 12rem);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  margin: 0;
+  text-transform: uppercase;
+}
+.display__message {
+  font-size: clamp(1.1rem, 3.4vw, 2.4rem);
+  font-weight: 600;
+  color: var(--theme-dim, var(--text-dim));
+  max-width: 22ch;
+  margin: 0 auto;
+}
+
+/* Footer: last-updated */
+.display__footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: clamp(0.85rem, 2vw, 1.15rem);
+  font-weight: 600;
+  color: var(--theme-dim, var(--text-dim));
+}
+.display__footer .dot {
+  opacity: 0.5;
+}
+
+/* Status-specific motion (kept subtle + respectful of reduced-motion). */
+body[data-status="brewing"] .display__icon {
+  animation: bob 2.4s ease-in-out infinite;
+}
+body[data-status="ready"] .display__icon {
+  animation: pop 2.8s ease-in-out infinite;
+}
+body[data-status="empty"] .display__status,
+body[data-status="maintenance"] .display__status {
+  animation: none;
+}
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes pop {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .display__icon {
+    animation: none !important;
+  }
+}
+
+/* In fullscreen / kiosk the toggle is less useful; keep it discreet. */
+:fullscreen .icon-btn {
+  opacity: 0.35;
+}
+:fullscreen .icon-btn:hover {
+  opacity: 1;
+}
