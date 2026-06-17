@@ -1,5 +1,6 @@
 /* Fullscreen warehouse display ============================================= */
 .display {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -319,5 +320,44 @@ body[data-status="maintenance"] .display__status {
   .order-chip[data-state="ready"],
   .order-flash__card {
     animation: none;
+  }
+}
+
+/* Scan-to-open QR (board corner) */
+.board-qr {
+  position: absolute;
+  right: clamp(0.6rem, 1.6vw, 1.25rem);
+  bottom: clamp(0.6rem, 1.6vw, 1.25rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.board-qr[hidden] {
+  display: none;
+}
+.board-qr__img {
+  width: clamp(72px, 8vw, 120px);
+  height: clamp(72px, 8vw, 120px);
+}
+.board-qr__img svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.board-qr__cap {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #1a1205;
+}
+@media (max-width: 700px) {
+  .board-qr {
+    display: none;
   }
 }

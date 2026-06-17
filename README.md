@@ -119,6 +119,7 @@ Both projects auto-deploy on every push to `main`.
 | `DATABASE_URL`                    | both projects        | Neon connection string (added automatically by Storage)  |
 | `ADMIN_PIN`                       | admin project (req.) | Passcode required to write. Set on public too if single-project |
 | `APP_ROLE`                        | both                 | `public` = read-only + admin hidden; `admin`/unset = full |
+| `AUTO_RESET_MINUTES`              | both (optional)      | Revert the status to Closed after this many idle minutes (default `30`; `0` = off) |
 
 `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` are also accepted. No secrets ever live
 in the repo.
@@ -144,8 +145,11 @@ the admin URL installs as **Espresso Admin** (opens the PIN screen).
 **Status board (`/display`)** — title, the big "Epic Brew" status card, the
 message, and last-updated time, themed per status. Shows a **Joe** badge when the
 manager isn't free, plus the **order queue** — a newly-Ready order triggers a
-full-screen flash and a chime (**🔔** toggles the sound). Updates live; no
-refresh. Tap **⛶** for full-screen (it also keeps the screen awake where supported).
+full-screen flash and a chime (**🔔** toggles the sound). A **QR code** in the
+corner lets people scan to open/install the app on their phone, and if the status
+sits untouched for ~30 min it auto-reverts to **Closed** so the board never lies
+after hours (tune via `AUTO_RESET_MINUTES`). Updates live; no refresh. Tap **⛶**
+for full-screen (it also keeps the screen awake where supported).
 
 **Admin (`/admin`)**
 

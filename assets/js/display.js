@@ -233,6 +233,24 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && document.fullscreenElement) requestWakeLock();
 });
 
+// --- Scan-to-open QR (rendered once; points at this board's own origin) ------
+function renderBoardQr() {
+  const box = document.getElementById("board-qr");
+  const img = document.getElementById("board-qr-img");
+  if (!box || !img || typeof window.qrcode !== "function") return;
+  try {
+    const qr = window.qrcode(0, "M");
+    qr.addData(location.origin + "/");
+    qr.make();
+    img.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+    box.hidden = false;
+  } catch (err) {
+    console.error("[display] QR render failed:", err);
+    box.hidden = true;
+  }
+}
+renderBoardQr();
+
 // --- Wire up & go ------------------------------------------------------------
 setupInstallButton(
   document.getElementById("install-btn"),

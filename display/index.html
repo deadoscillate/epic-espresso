@@ -107,6 +107,11 @@
         <span id="updated-rel">never</span>
       </footer>
 
+      <aside class="board-qr" id="board-qr" hidden>
+        <div class="board-qr__img" id="board-qr-img" aria-hidden="true"></div>
+        <span class="board-qr__cap">Scan to open</span>
+      </aside>
+
       <div class="order-flash" id="order-flash" hidden>
         <div class="order-flash__card">
           <div class="order-flash__icon" aria-hidden="true">☕</div>
@@ -115,6 +120,7 @@
       </div>
     </main>
 
+    <script src="/assets/js/vendor/qrcode.js"></script>
     <script type="module" src="../assets/js/display.js"></script>
   </body>
 </html>

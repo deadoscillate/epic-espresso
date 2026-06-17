@@ -13,6 +13,7 @@
 //   DATABASE_URL  -> Neon connection string (POSTGRES_URL also accepted)
 //   ADMIN_PIN     -> passcode required to write
 //   APP_ROLE      -> "public" makes this deployment read-only (hides admin)
+//   AUTO_RESET_MINUTES -> revert to Closed after N min idle (default 30; 0 = off)
 // -----------------------------------------------------------------------------
 
 import { neon } from "@neondatabase/serverless";
@@ -23,6 +24,11 @@ const NAME_MAX = 40;
 const STATUSES = ["brewing", "ready", "empty", "cleaning", "closed", "beans_low", "maintenance"];
 const MANAGER_STATES = ["available", "meeting", "heads_down", "out"];
 const ORDER_FLOW = ["queued", "making", "ready"]; // advancing past "ready" serves (removes) it
+// Auto-reset: if the coffee status goes untouched this long, revert to Closed so
+// the board never lies after hours. Read-time (no cron needed); 0 disables it.
+const AUTO_RESET_MIN = Number(process.env.AUTO_RESET_MINUTES ?? 30);
+const AUTO_RESET_MS =
+  Number.isFinite(AUTO_RESET_MIN) && AUTO_RESET_MIN > 0 ? AUTO_RESET_MIN * 60000 : 0;
 const DEFAULT_STATE = { status: "closed", message: "", updatedAt: null };
 const DEFAULT_MANAGER = { state: "available", note: "", updatedAt: null };
 
@@ -90,6 +96,16 @@ async function readState(db) {
     : { ...DEFAULT_STATE, manager: { ...DEFAULT_MANAGER } };
   base.orders = await readOrders(db);
   return base;
+}
+
+// Revert a stale coffee status to Closed (clearing its message). Read-time, so
+// the board self-heals after hours without a scheduled job. Leaves Joe + orders.
+async function maybeAutoReset(db, state) {
+  if (!AUTO_RESET_MS) return state;
+  if (state.status === "closed" || state.updatedAt == null) return state;
+  if (Date.now() - state.updatedAt < AUTO_RESET_MS) return state;
+  await writeCoffee(db, "closed", "");
+  return readState(db);
 }
 
 async function writeCoffee(db, status, message) {
@@ -183,7 +199,7 @@ export async function handle(req, res, db) {
 
   if (req.method === "GET") {
     try {
-      return send(res, 200, await readState(db));
+      return send(res, 200, await maybeAutoReset(db, await readState(db)));
     } catch (err) {
       console.error("[api] DB read failed:", err);
       return send(res, 502, { error: "db_read_failed" });

@@ -33,6 +33,8 @@ draft, not a contract.
 - Network-first service worker (auto-updates so fixes ship without a stale cache)
 - Manager status — "Joe is in a meeting" (manual toggle + optional note)
 - Order tracker — name-only queue (Queued → Making → Ready) on the board, with a "your order is ready" flash + chime
+- Auto-reset — stale status reverts to Closed after ~30 min idle (configurable)
+- Scan-to-open QR code in the board corner
 
 ---
 
@@ -91,17 +93,19 @@ with `{ order: { action } }` writes, kept behind the `store.js` abstraction.
 "serves"/removes it); shown on the **main board** with a ready flash + chime.
 A dedicated `/orders` screen for a second monitor remains a possible later add.
 
-### 3. Auto-reset after inactivity  · Effort: **S**
+### ✅ 3. Auto-reset after inactivity — shipped
 
-Revert to `Closed` (or `Empty`) if the status hasn't changed in ~30 min, so the
-board never lies after everyone goes home. Server-side: compare `updatedAt` on
-read, or a scheduled Vercel Cron that resets stale state.
+Reverts to `Closed` if the coffee status sits untouched for ~30 min, so the board
+never lies after everyone goes home. Implemented **read-time** in `/api/status`
+(no cron needed on the free tier) — leaves Joe and the order queue untouched.
+Tunable via `AUTO_RESET_MINUTES` (default `30`; `0` disables it).
 
-### 4. QR code on the board  · Effort: **S**
+### ✅ 4. QR code on the board — shipped
 
-A small QR in the board corner linking to the public URL, so anyone can scan to
-open/install the status app on their phone. Generated client-side (tiny lib) or
-as a committed SVG.
+A small QR in the board's corner linking to the site's own origin, so anyone can
+scan to open/install the app on their phone. Generated **client-side** from a
+vendored zero-dependency lib (`assets/js/vendor/qrcode.js`) using
+`location.origin`, so it always matches the serving domain and works offline.
 
 ---
 
