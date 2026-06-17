@@ -1,15 +1,17 @@
 // Service worker — installable + offline-capable.
 // Network-first for everything (so updates always show when online); the cache
 // is only a fallback for offline. The live API is never intercepted.
-const CACHE = "bsmeb-v10";
+const CACHE = "bsmeb-v11";
 const SHELL = [
   "/",
   "/display",
+  "/order",
   "/manifest.webmanifest",
   "/assets/css/base.css",
   "/assets/css/landing.css",
   "/assets/css/admin.css",
   "/assets/css/display.css",
+  "/assets/css/order.css",
   "/assets/js/config.js",
   "/assets/js/statuses.js",
   "/assets/js/util.js",
@@ -19,6 +21,8 @@ const SHELL = [
   "/assets/js/landing.js",
   "/assets/js/display.js",
   "/assets/js/admin.js",
+  "/assets/js/order.js",
+  "/assets/js/auth.js",
   "/assets/js/vendor/qrcode.js",
   "/assets/img/epic-icon.svg",
   "/assets/img/icon-192.png",

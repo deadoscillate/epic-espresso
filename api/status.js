@@ -5,7 +5,8 @@
 //   POST -> updates the state; requires the admin PIN. Partial:
 //             { status, message, pin }            -> coffee status
 //             { manager: { state, note }, pin }   -> manager (Joe) presence
-//             { order: { action, … }, pin }       -> order queue (add/advance/remove/clear)
+//             { order: { action, item, … } }      -> order queue; a signed-in visitor
+//                                                    may "add" (no PIN), the rest is admin
 //             { pin, verify: true }               -> PIN check only
 //
 // State lives in a single-row table `coffee_state` (created/upgraded on demand,
@@ -17,10 +18,12 @@
 // -----------------------------------------------------------------------------
 
 import { neon } from "@neondatabase/serverless";
+import { getSession } from "../lib/session.js";
 
 const MESSAGE_MAX = 280;
 const NOTE_MAX = 120;
 const NAME_MAX = 40;
+const MAX_USER_ORDERS = 3; // active orders a single signed-in visitor may hold
 const STATUSES = ["brewing", "ready", "empty", "cleaning", "closed", "beans_low", "maintenance"];
 const MANAGER_STATES = ["available", "meeting", "heads_down", "out"];
 const ORDER_FLOW = ["queued", "making", "ready"]; // advancing past "ready" serves (removes) it
@@ -61,15 +64,19 @@ async function ensureTable(db) {
     created_at bigint,
     updated_at bigint
   )`;
+  // Added later (self-serve ordering): the chosen menu item + who placed it.
+  await db`ALTER TABLE coffee_orders ADD COLUMN IF NOT EXISTS item text`;
+  await db`ALTER TABLE coffee_orders ADD COLUMN IF NOT EXISTS user_id text`;
   tableReady = true;
 }
 
 async function readOrders(db) {
-  const rows = await db`SELECT id, name, state, created_at, updated_at
+  const rows = await db`SELECT id, name, item, state, created_at, updated_at
                         FROM coffee_orders ORDER BY created_at ASC, id ASC`;
   return rows.map((r) => ({
     id: Number(r.id),
     name: r.name,
+    item: r.item || "",
     state: ORDER_FLOW.includes(r.state) ? r.state : "queued",
     createdAt: r.created_at == null ? null : Number(r.created_at),
     updatedAt: r.updated_at == null ? null : Number(r.updated_at),
@@ -130,12 +137,38 @@ async function writeManager(db, state, note) {
                  manager_updated_at = EXCLUDED.manager_updated_at`;
 }
 
-async function addOrder(db, name) {
+async function addOrder(db, name, item, userId) {
   await ensureTable(db);
   const now = Date.now();
-  await db`INSERT INTO coffee_orders (name, state, created_at, updated_at)
-           VALUES (${name}, 'queued', ${now}, ${now})`;
+  const rows = await db`INSERT INTO coffee_orders (name, item, user_id, state, created_at, updated_at)
+           VALUES (${name}, ${item || ""}, ${userId || null}, 'queued', ${now}, ${now})
+           RETURNING id`;
+  return rows.length ? Number(rows[0].id) : null;
 }
+
+// How many active orders a given visitor already has (for a light spam cap).
+async function countUserOrders(db, userId) {
+  const rows = await db`SELECT count(*)::int AS n FROM coffee_orders WHERE user_id = ${userId}`;
+  return rows.length ? Number(rows[0].n) : 0;
+}
+
+// A visitor may only order something on the menu. If no items are marked
+// available yet, fall back to accepting any non-empty name (menu not set up).
+async function orderableItem(db, raw) {
+  const item = String(raw || "").trim().slice(0, NAME_MAX);
+  if (!item) return null;
+  let available = [];
+  try {
+    available = await db`SELECT name FROM inventory WHERE available = true`;
+  } catch {
+    return item; // inventory table not created yet
+  }
+  if (!available.length) return item;
+  const match = available.find((r) => r.name.toLowerCase() === item.toLowerCase());
+  return match ? match.name : null;
+}
+
+const firstName = (full) => String(full || "").trim().split(/\s+/)[0] || "";
 
 async function advanceOrder(db, id) {
   await ensureTable(db);
@@ -207,11 +240,8 @@ export async function handle(req, res, db) {
   }
 
   if (req.method === "POST") {
-    if ((process.env.APP_ROLE || "all") === "public") {
-      return send(res, 403, { error: "read_only" });
-    }
+    const session = getSession(req);
     const adminPin = process.env.ADMIN_PIN;
-    if (!adminPin) return send(res, 503, { error: "pin_not_configured" });
 
     let body = {};
     try {
@@ -219,10 +249,35 @@ export async function handle(req, res, db) {
     } catch {
       return send(res, 400, { error: "bad_json" });
     }
+    const pinOk = Boolean(adminPin) && pinMatches(String(body.pin || ""), adminPin);
 
-    if (!pinMatches(String(body.pin || ""), adminPin)) {
-      return send(res, 401, { error: "bad_pin" });
+    // Self-serve order placement by a signed-in visitor — no PIN, and allowed even
+    // on the public (read-only) deploy. The name comes from their Google account.
+    if (body.order && body.order.action === "add" && session && !pinOk) {
+      try {
+        const item = await orderableItem(db, body.order.item);
+        if (!item) return send(res, 400, { error: "bad_item" });
+        if ((await countUserOrders(db, session.uid)) >= MAX_USER_ORDERS) {
+          return send(res, 429, { error: "too_many_orders" });
+        }
+        const emailName = session.email ? String(session.email).split("@")[0] : "";
+        const name = firstName(session.name) || emailName || "Guest";
+        const id = await addOrder(db, name, item, session.uid);
+        const state = await readState(db);
+        state.createdOrderId = id;
+        return send(res, 200, state);
+      } catch (err) {
+        console.error("[api] order placement failed:", err);
+        return send(res, 502, { error: "db_write_failed" });
+      }
     }
+
+    // Everything else is an admin action (still the shared PIN).
+    if ((process.env.APP_ROLE || "all") === "public") {
+      return send(res, 403, { error: "read_only" });
+    }
+    if (!adminPin) return send(res, 503, { error: "pin_not_configured" });
+    if (!pinOk) return send(res, 401, { error: "bad_pin" });
     if (body.verify) return send(res, 200, { ok: true });
 
     try {
@@ -231,7 +286,8 @@ export async function handle(req, res, db) {
         if (o.action === "add") {
           const name = String(o.name || "").trim().slice(0, NAME_MAX);
           if (!name) return send(res, 400, { error: "bad_order" });
-          await addOrder(db, name);
+          const item = String(o.item || "").trim().slice(0, NAME_MAX);
+          await addOrder(db, name, item, null);
         } else if (o.action === "advance") {
           const id = Number(o.id);
           if (!Number.isFinite(id)) return send(res, 400, { error: "bad_order" });

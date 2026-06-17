@@ -1,0 +1,218 @@
+/* Self-serve order page ===================================================== */
+.order {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 4rem;
+}
+
+.order__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0 1.5rem;
+}
+.order__home {
+  text-decoration: none;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.order__home:hover {
+  color: var(--text);
+}
+
+.order__head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+.order__mark {
+  flex-shrink: 0;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.order__head .brand {
+  font-size: clamp(1.5rem, 5vw, 2.1rem);
+}
+.order__head .tagline {
+  margin-top: 0.3rem;
+}
+
+.order__loading {
+  color: var(--text-dim);
+}
+.order__loading[hidden],
+.order__panel[hidden],
+#state-signedin[hidden] {
+  display: none;
+}
+
+.order__panel {
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.order__panel p {
+  margin: 0 0 1rem;
+}
+.order__panel .install-btn {
+  text-decoration: none;
+}
+
+.order__user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  font-weight: 700;
+}
+.order__status {
+  margin: 0 0 1rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin: 1.5rem 0 0.75rem;
+}
+
+.order__empty {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+.order__empty[hidden] {
+  display: none;
+}
+
+/* Menu of orderable items */
+.menu {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+.menu-item {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  font-size: 1.05rem;
+  min-height: 88px;
+  padding: 1rem;
+  color: #1a1205;
+  background: var(--epic-gold);
+  border: 2px solid var(--epic-gold);
+  border-radius: var(--radius);
+  transition: transform 0.08s ease, filter 0.15s ease;
+}
+.menu-item:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-2px);
+}
+.menu-item:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Live queue */
+.queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.queue-item[data-state="making"] {
+  border-left-color: var(--epic-teal);
+}
+.queue-item[data-state="ready"] {
+  border-left-color: var(--epic-gold);
+}
+.queue-item.is-mine {
+  background: color-mix(in srgb, var(--epic-gold) 14%, var(--surface));
+}
+.queue-item__who {
+  font-weight: 700;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.queue-item__what {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-item__state {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* "Your order is ready" banner */
+.order-ready {
+  margin: 0 0 1rem;
+  padding: 0.9rem 1.1rem;
+  font-weight: 800;
+  color: #1a1205;
+  background: var(--epic-gold);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.order-ready[hidden] {
+  display: none;
+}
+
+/* Toast (self-contained; the order page doesn't load admin.css) */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translate(-50%, 200%);
+  max-width: calc(100vw - 2rem);
+  padding: 0.8rem 1.2rem;
+  border-radius: var(--radius-sm);
+  background: #1f2937;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  z-index: 50;
+}
+.toast.is-visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+.toast[data-kind="ok"] {
+  background: #166534;
+}
+.toast[data-kind="error"] {
+  background: #991b1b;
+}

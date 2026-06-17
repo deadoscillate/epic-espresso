@@ -345,6 +345,108 @@
   display: none;
 }
 
+/* Inventory ---------------------------------------------------------------- */
+.inv {
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.inv__hint {
+  margin: 0 0 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.inv__add {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.inv__name {
+  flex: 1;
+  min-width: 0;
+  padding: 0.7rem 0.9rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.inv__stock {
+  width: 5rem;
+  padding: 0.7rem 0.6rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.inv__name:focus,
+.inv__stock:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.inv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.inv-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem 0.55rem 0.85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.inv-row[data-available="true"] {
+  border-left-color: var(--epic-gold);
+}
+.inv-row__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inv-row__menu,
+.inv-row__stock {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.inv-row__stock input {
+  width: 4.5rem;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.inv-row__remove {
+  flex-shrink: 0;
+  padding: 0.45em 0.7em;
+}
+@media (max-width: 480px) {
+  .inv-row {
+    flex-wrap: wrap;
+  }
+  .inv-row__name {
+    flex-basis: 100%;
+  }
+}
+
 /* Custom message field ----------------------------------------------------- */
 .message-field {
   padding: 1.1rem 1.25rem;

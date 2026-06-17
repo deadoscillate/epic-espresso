@@ -59,6 +59,7 @@ function sanitizeOrders(arr) {
     .map((o) => ({
       id: o.id,
       name: typeof o.name === "string" ? o.name.slice(0, NAME_MAX) : "",
+      item: typeof o.item === "string" ? o.item.slice(0, NAME_MAX) : "",
       state: ORDER_FLOW.includes(o.state) ? o.state : "queued",
       createdAt: typeof o.createdAt === "number" ? o.createdAt : null,
       updatedAt: typeof o.updatedAt === "number" ? o.updatedAt : null,
@@ -82,7 +83,7 @@ function sanitize(raw) {
 // A compact signature of the queue — changes when an order is added, advanced,
 // served, or removed, so equal polls still skip a re-render.
 function ordersSig(orders) {
-  return orders.map((o) => `${o.id}:${o.state}:${o.name}`).join("|");
+  return orders.map((o) => `${o.id}:${o.state}:${o.name}:${o.item}`).join("|");
 }
 
 // Demo-mode (localStorage) order mutations — mirrors the server's transitions.
@@ -96,7 +97,7 @@ function applyOrderAction(orders, order) {
     case "add":
       return [
         ...list,
-        { id: nextDemoId(list), name: order.name, state: "queued", createdAt: now, updatedAt: now },
+        { id: nextDemoId(list), name: order.name || "You", item: order.item || "", state: "queued", createdAt: now, updatedAt: now },
       ];
     case "advance":
       return list.flatMap((o) => {
@@ -188,11 +189,18 @@ export function createCoffeeStore() {
       }
       if (res.status === 401) throw new StoreError("Incorrect PIN.", "bad_pin");
       if (res.status === 403) throw new StoreError("This site is read-only.", "read_only");
+      if (res.status === 429) {
+        throw new StoreError("You already have a few orders in the queue.", "too_many_orders");
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new StoreError("Couldn’t save — please try again.", body.error || `http_${res.status}`);
+        const code = body.error || `http_${res.status}`;
+        const msg = code === "bad_item" ? "That item isn’t on the menu right now." : "Couldn’t save — please try again.";
+        throw new StoreError(msg, code);
       }
-      setState(await res.json());
+      const json = await res.json();
+      setState(json);
+      return json;
     };
 
     verifyImpl = async (pin) => {
@@ -227,8 +235,12 @@ export function createCoffeeStore() {
     applyWrite = async (payload) => {
       // Merge the partial update into the current state (coffee / manager / orders).
       let next;
+      let createdOrderId = null;
       if (payload.order) {
         next = { ...state, orders: applyOrderAction(state.orders, payload.order) };
+        if (payload.order.action === "add" && next.orders.length) {
+          createdOrderId = next.orders[next.orders.length - 1].id;
+        }
       } else if (payload.manager) {
         next = { ...state, manager: { ...payload.manager, updatedAt: Date.now() } };
       } else {
@@ -236,6 +248,7 @@ export function createCoffeeStore() {
       }
       localStorage.setItem(DEMO_KEY, JSON.stringify(next));
       setState(next); // storage event doesn't fire in the writing tab
+      return { ...next, createdOrderId };
     };
     verifyImpl = async () => true;
   }
@@ -270,10 +283,14 @@ export function createCoffeeStore() {
       await applyWrite({ manager: { state: mState, note: String(note).trim().slice(0, NOTE_MAX) }, pin });
     },
 
-    async addOrder({ name, pin }) {
-      const clean = String(name || "").trim().slice(0, NAME_MAX);
-      if (!clean) throw new StoreError("Enter a name.", "bad_order");
-      await applyWrite({ order: { action: "add", name: clean }, pin });
+    // name + pin = admin add; item only (cookie auth) = self-serve. Returns the
+    // new order's id when the backend provides it.
+    async addOrder({ name, item, pin } = {}) {
+      const payload = { action: "add" };
+      if (name != null) payload.name = String(name).trim().slice(0, NAME_MAX);
+      if (item != null) payload.item = String(item).trim().slice(0, NAME_MAX);
+      const res = await applyWrite({ order: payload, pin });
+      return res && res.createdOrderId != null ? res.createdOrderId : null;
     },
 
     async advanceOrder({ id, pin }) {

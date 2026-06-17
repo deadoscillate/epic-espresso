@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Order · Epic Espresso Bar</title>
+    <meta name="description" content="Order a coffee from the Epic Espresso Bar." />
+
+    <link rel="icon" href="/assets/img/favicon-32.png" sizes="32x32" />
+    <link rel="icon" href="/assets/img/epic-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#173a5e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+
+    <link rel="stylesheet" href="../assets/css/base.css" />
+    <link rel="stylesheet" href="../assets/css/order.css" />
+  </head>
+  <body data-status="closed">
+    <main class="order">
+      <header class="order__top">
+        <a class="order__home" href="../">← Home</a>
+        <span class="conn" id="connection" role="status" aria-live="polite">
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span class="conn-text">Connecting…</span>
+        </span>
+      </header>
+
+      <div class="order__head">
+        <img class="order__mark" src="/assets/img/epic-icon.svg" alt="" width="56" height="56" />
+        <div>
+          <h1 class="brand">Order a coffee</h1>
+          <p class="tagline" id="order-sub">Loading…</p>
+        </div>
+      </div>
+
+      <p class="order__loading" id="order-loading">Loading…</p>
+
+      <section class="order__panel" id="state-unconfigured" hidden>
+        <p>Ordering sign-in isn't set up yet. Ask an admin to configure Google sign-in.</p>
+      </section>
+
+      <section class="order__panel" id="state-signedout" hidden>
+        <p>Sign in with your Google account to place an order — the barista just sees your first name.</p>
+        <a class="install-btn" id="login-btn" href="/api/auth/login">Sign in with Google</a>
+      </section>
+
+      <section id="state-signedin" hidden>
+        <div class="order__user">
+          <span id="user-greeting">Signed in</span>
+          <button type="button" class="btn" id="logout-btn">Sign out</button>
+        </div>
+
+        <p class="order__status" id="bar-status"></p>
+
+        <div class="order-ready" id="order-ready" hidden></div>
+
+        <h2 class="section-label">Menu</h2>
+        <div class="menu" id="menu"></div>
+        <p class="order__empty" id="menu-empty" hidden>No items on the menu right now.</p>
+
+        <h2 class="section-label">In the queue</h2>
+        <ul class="queue" id="queue"></ul>
+        <p class="order__empty" id="queue-empty" hidden>The queue is empty.</p>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="../assets/js/order.js"></script>
+  </body>
+</html>

@@ -83,7 +83,7 @@ function render(state) {
   const newlyReady = detectReady(orders);
   renderOrders(orders);
   if (newlyReady.length) {
-    showFlash(newlyReady.map((o) => o.name));
+    showFlash(newlyReady);
     playChime();
   }
 
@@ -113,7 +113,7 @@ function renderOrders(orders) {
     li.dataset.state = o.state;
     const name = document.createElement("span");
     name.className = "order-chip__name";
-    name.textContent = o.name;
+    name.textContent = o.item ? `${o.name} · ${o.item}` : o.name;
     const pill = document.createElement("span");
     pill.className = "order-chip__state";
     pill.textContent = info.label;
@@ -137,10 +137,12 @@ function detectReady(orders) {
 }
 
 let flashTimer;
-function showFlash(names) {
-  const extra = names.length - 1;
+function showFlash(ready) {
+  const first = ready[0];
+  const label = first.item ? `${first.name}'s ${first.item}` : first.name;
+  const extra = ready.length - 1;
   els.orderFlashText.textContent =
-    extra > 0 ? `${names[0]} + ${extra} more — order ready!` : `${names[0]} — your order is ready!`;
+    extra > 0 ? `${label} + ${extra} more — order ready!` : `${label} — order ready!`;
   els.orderFlash.hidden = false;
   void els.orderFlash.offsetWidth; // reflow so the transition re-runs on retrigger
   els.orderFlash.classList.add("is-on");

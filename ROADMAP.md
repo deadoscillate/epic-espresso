@@ -35,6 +35,9 @@ draft, not a contract.
 - Order tracker — name-only queue (Queued → Making → Ready) on the board, with a "your order is ready" flash + chime
 - Auto-reset — stale status reverts to Closed after ~30 min idle (configurable)
 - Scan-to-open QR code in the board corner
+- Google sign-in (OAuth) + visitor accounts (admin stays on the PIN)
+- Self-serve ordering — signed-in visitors order from the menu; per-person cap
+- Inventory — admin-managed menu (orderable items) + back-office stock counts
 
 ---
 

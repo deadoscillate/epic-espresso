@@ -135,6 +135,26 @@
         <ul class="order-list" id="order-list"></ul>
         <p class="order-empty" id="order-empty">No orders in the queue.</p>
       </section>
+
+      <!-- Inventory (menu + stock) -->
+      <h2 class="section-label">Inventory</h2>
+      <section class="inv">
+        <p class="inv__hint">Items marked <strong>On menu</strong> appear for visitors to order.</p>
+        <form class="inv__add" id="inv-add">
+          <input
+            id="inv-name"
+            class="inv__name"
+            maxlength="60"
+            placeholder="Item name (e.g. Latte)…"
+            aria-label="Item name"
+            autocomplete="off"
+          />
+          <input id="inv-stock" class="inv__stock" type="number" min="0" max="100000" value="0" aria-label="Initial stock" />
+          <button type="submit" class="btn btn-primary" id="inv-add-btn">Add</button>
+        </form>
+        <ul class="inv-list" id="inv-list"></ul>
+        <p class="order-empty" id="inv-empty">No items yet. Add what the bar offers.</p>
+      </section>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

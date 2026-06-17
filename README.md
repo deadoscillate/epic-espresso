@@ -120,9 +120,25 @@ Both projects auto-deploy on every push to `main`.
 | `ADMIN_PIN`                       | admin project (req.) | Passcode required to write. Set on public too if single-project |
 | `APP_ROLE`                        | both                 | `public` = read-only + admin hidden; `admin`/unset = full |
 | `AUTO_RESET_MINUTES`              | both (optional)      | Revert the status to Closed after this many idle minutes (default `30`; `0` = off) |
+| `GOOGLE_CLIENT_ID`                | public (ordering)    | Google OAuth client ID — enables visitor sign-in + self-serve orders |
+| `GOOGLE_CLIENT_SECRET`            | public (ordering)    | Google OAuth client secret |
+| `SESSION_SECRET`                  | public (ordering)    | Long random string used to sign session cookies |
 
 `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` are also accepted. No secrets ever live
-in the repo.
+in the repo. Visitor sign-in is **optional** — until the three Google vars are
+set the order page just says "sign-in isn't set up yet" and everything else works.
+
+### Turn on Google sign-in + ordering
+
+1. In **Google Cloud Console → APIs & Services → Credentials**, create an
+   **OAuth client ID** (type: *Web application*).
+2. Add an **Authorized redirect URI**: `https://<your-domain>/api/auth/callback`
+   (add one per domain you use — production and any preview/custom domains).
+3. Put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and a `SESSION_SECRET`
+   (any long random string) into the **public** project's env vars, then
+   redeploy. The same project must have `DATABASE_URL`.
+4. Visitors go to **/order**, sign in, and pick from the menu; their first name
+   shows on the board. The barista still serves/advances from **/admin** (PIN).
 
 ---
 
@@ -162,7 +178,14 @@ for full-screen (it also keeps the screen awake where supported).
   optional "back ~2:30" note (shown as a badge on the board).
 - **Orders:** add a name to the queue, then advance it Queued → Making → Ready
   (Ready flashes + chimes on the board); **Serve** clears it.
+- **Inventory:** add items with a stock count and an **On menu** toggle. Items
+  on the menu are what visitors can order; stock is just for your tracking.
 - The **Currently live** card mirrors the board; failed saves show a clear error.
+
+**Order (`/order`)** — visitors sign in with Google, pick an item from the menu,
+and watch the live queue with their own orders highlighted (their phone buzzes
+when it's ready). Each person is capped at a few active orders. Admin still
+serves/advances from `/admin`.
 
 Both pages show a **connection indicator**: green = live, amber = demo mode,
 red = reconnecting.
@@ -188,17 +211,24 @@ red = reconnecting.
 │   ├── index.html          # Admin panel (/admin)
 │   └── manifest.webmanifest# PWA manifest for the admin app
 ├── display/index.html      # Status board (/display)
-├── api/status.js           # Serverless: GET/POST shared state in Neon Postgres
+├── order/index.html        # Self-serve ordering (/order) — Google sign-in
+├── api/
+│   ├── status.js           # GET/POST shared state (status, manager, orders) in Neon
+│   ├── inventory.js        # GET/POST the menu + stock (admin PIN to write)
+│   └── auth/[action].js    # Google OAuth: login / callback / me / logout
+├── lib/session.js          # Signed httpOnly session-cookie helpers (server-only)
 ├── middleware.js           # Edge: hides /admin on the public (APP_ROLE) deploy
 ├── manifest.webmanifest    # PWA manifest for the public app
 ├── sw.js                   # Service worker (installable + offline shell)
 ├── assets/
-│   ├── css/                # base (tokens + themes), landing, admin, display
+│   ├── css/                # base (tokens + themes), landing, admin, display, order
 │   ├── js/
 │   │   ├── config.js       # API path + poll interval (no secrets)
-│   │   ├── statuses.js     # Status catalogue (labels, icons, taglines)
+│   │   ├── statuses.js     # Status + order-state + manager catalogues
 │   │   ├── store.js        # Storage abstraction (live API | demo)
-│   │   ├── util.js, pwa.js, landing.js, admin.js, display.js
+│   │   ├── auth.js         # Client helper for /api/auth/*
+│   │   ├── util.js, pwa.js, install.js, landing.js, admin.js, display.js, order.js
+│   │   └── vendor/qrcode.js# Vendored QR generator (MIT) for the board QR
 │   └── img/                # icons + img/status/ (Epic Brew card art, WebP)
 ├── package.json            # Neon driver dependency (Vercel installs it)
 └── vercel.json

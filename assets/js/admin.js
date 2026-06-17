@@ -39,6 +39,12 @@ const els = {
   orderAddBtn: document.getElementById("order-add-btn"),
   orderList: document.getElementById("order-list"),
   orderEmpty: document.getElementById("order-empty"),
+  invAdd: document.getElementById("inv-add"),
+  invName: document.getElementById("inv-name"),
+  invStock: document.getElementById("inv-stock"),
+  invAddBtn: document.getElementById("inv-add-btn"),
+  invList: document.getElementById("inv-list"),
+  invEmpty: document.getElementById("inv-empty"),
   gate: document.getElementById("pin-gate"),
   gateForm: document.getElementById("pin-form"),
   gateInput: document.getElementById("pin-input"),
@@ -108,6 +114,10 @@ function updateControls() {
   els.orderName.disabled = !enabled;
   els.orderAddBtn.disabled = !enabled;
   els.orderList.querySelectorAll("button").forEach((b) => (b.disabled = !enabled));
+  els.invName.disabled = !enabled;
+  els.invStock.disabled = !enabled;
+  els.invAddBtn.disabled = !enabled;
+  els.invList.querySelectorAll("input, button").forEach((b) => (b.disabled = !enabled));
 }
 
 // --- Actions ----------------------------------------------------------------
@@ -251,6 +261,128 @@ function renderOrders(orders) {
   }
 }
 
+// --- Inventory (menu + stock) -----------------------------------------------
+async function loadInventory() {
+  try {
+    const res = await fetch("/api/inventory", { cache: "no-store" });
+    if (res.ok) renderInventory((await res.json()).items || []);
+  } catch {
+    /* GET is best-effort */
+  }
+}
+
+async function invPost(payload) {
+  const res = await fetch("/api/inventory", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, pin }),
+  });
+  if (res.status === 401) {
+    const e = new Error("Incorrect PIN.");
+    e.code = "bad_pin";
+    throw e;
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const e = new Error("Couldn’t save inventory.");
+    e.code = body.error || `http_${res.status}`;
+    throw e;
+  }
+  return (await res.json()).items || [];
+}
+
+async function invAdd(e) {
+  e.preventDefault();
+  const name = els.invName.value.trim();
+  if (!name) return;
+  const stock = Number(els.invStock.value) || 0;
+  busy = true;
+  updateControls();
+  try {
+    renderInventory(await invPost({ action: "add", name, stock, available: true }));
+    els.invName.value = "";
+    els.invStock.value = "0";
+    showToast(`Added ${name}.`, "ok");
+  } catch (err) {
+    handleWriteError(err, "Couldn’t add the item.");
+  } finally {
+    busy = false;
+    updateControls();
+    els.invName.focus();
+  }
+}
+
+async function invMutate(payload, fallback) {
+  busy = true;
+  updateControls();
+  try {
+    renderInventory(await invPost(payload));
+  } catch (err) {
+    handleWriteError(err, fallback);
+  } finally {
+    busy = false;
+    updateControls();
+  }
+}
+
+function renderInventory(items) {
+  els.invList.textContent = "";
+  els.invEmpty.hidden = items.length > 0;
+  for (const it of items) {
+    const li = document.createElement("li");
+    li.className = "inv-row";
+    li.dataset.available = String(it.available);
+
+    const name = document.createElement("span");
+    name.className = "inv-row__name";
+    name.textContent = it.name;
+
+    const menuLabel = document.createElement("label");
+    menuLabel.className = "inv-row__menu";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = it.available;
+    cb.addEventListener("change", () =>
+      invMutate({ action: "update", id: it.id, available: cb.checked }, "Couldn’t update the item.")
+    );
+    menuLabel.append(cb, document.createTextNode(" On menu"));
+
+    const stockWrap = document.createElement("span");
+    stockWrap.className = "inv-row__stock";
+    const stockInput = document.createElement("input");
+    stockInput.type = "number";
+    stockInput.min = "0";
+    stockInput.value = String(it.stock);
+    stockInput.setAttribute("aria-label", `${it.name} stock`);
+    stockInput.addEventListener("change", () => {
+      const v = Number(stockInput.value);
+      if (Number.isFinite(v) && v !== it.stock) {
+        invMutate({ action: "update", id: it.id, stock: v }, "Couldn’t update stock.");
+      }
+    });
+    stockInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        stockInput.blur();
+      }
+    });
+    stockWrap.append(document.createTextNode("Stock "), stockInput);
+
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "btn inv-row__remove";
+    rm.setAttribute("aria-label", `Remove ${it.name}`);
+    rm.textContent = "✕";
+    rm.addEventListener("click", () =>
+      invMutate({ action: "remove", id: it.id }, "Couldn’t remove the item.")
+    );
+
+    li.append(name, menuLabel, stockWrap, rm);
+    els.invList.appendChild(li);
+  }
+  updateControls();
+}
+
 function handleWriteError(err, fallback) {
   console.error("[admin] update failed:", err);
   if (err.code === "bad_pin") {
@@ -330,6 +462,7 @@ els.managerNote.addEventListener("keydown", (e) => {
 els.managerNoteApply.addEventListener("click", applyManagerNoteOnly);
 els.applyMessage.addEventListener("click", applyMessageOnly);
 els.orderAdd.addEventListener("submit", addOrder);
+els.invAdd.addEventListener("submit", invAdd);
 
 // --- Render live state -------------------------------------------------------
 function render(state) {
@@ -409,4 +542,5 @@ setInterval(() => {
 
 updateMessageCount();
 updateControls();
+loadInventory();
 store.init();
