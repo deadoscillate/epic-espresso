@@ -1,10 +1,11 @@
 // -----------------------------------------------------------------------------
 // /api/status — the shared state, backed by Neon (serverless Postgres)
 // -----------------------------------------------------------------------------
-//   GET  -> { status, message, updatedAt, manager: { state, note, updatedAt } }
+//   GET  -> { status, message, updatedAt, manager: {…}, orders: [{ id, name, state, … }] }
 //   POST -> updates the state; requires the admin PIN. Partial:
 //             { status, message, pin }            -> coffee status
 //             { manager: { state, note }, pin }   -> manager (Joe) presence
+//             { order: { action, … }, pin }       -> order queue (add/advance/remove/clear)
 //             { pin, verify: true }               -> PIN check only
 //
 // State lives in a single-row table `coffee_state` (created/upgraded on demand,
@@ -18,8 +19,10 @@ import { neon } from "@neondatabase/serverless";
 
 const MESSAGE_MAX = 280;
 const NOTE_MAX = 120;
+const NAME_MAX = 40;
 const STATUSES = ["brewing", "ready", "empty", "cleaning", "closed", "beans_low", "maintenance"];
 const MANAGER_STATES = ["available", "meeting", "heads_down", "out"];
+const ORDER_FLOW = ["queued", "making", "ready"]; // advancing past "ready" serves (removes) it
 const DEFAULT_STATE = { status: "closed", message: "", updatedAt: null };
 const DEFAULT_MANAGER = { state: "available", note: "", updatedAt: null };
 
@@ -44,7 +47,27 @@ async function ensureTable(db) {
   await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_state text`;
   await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_note text`;
   await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_updated_at bigint`;
+  // Order queue (names only) — a separate table since it's a list, not a singleton.
+  await db`CREATE TABLE IF NOT EXISTS coffee_orders (
+    id bigserial PRIMARY KEY,
+    name text NOT NULL,
+    state text NOT NULL DEFAULT 'queued',
+    created_at bigint,
+    updated_at bigint
+  )`;
   tableReady = true;
+}
+
+async function readOrders(db) {
+  const rows = await db`SELECT id, name, state, created_at, updated_at
+                        FROM coffee_orders ORDER BY created_at ASC, id ASC`;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    name: r.name,
+    state: ORDER_FLOW.includes(r.state) ? r.state : "queued",
+    createdAt: r.created_at == null ? null : Number(r.created_at),
+    updatedAt: r.updated_at == null ? null : Number(r.updated_at),
+  }));
 }
 
 async function readState(db) {
@@ -52,18 +75,21 @@ async function readState(db) {
   const rows = await db`SELECT status, message, updated_at,
                                manager_state, manager_note, manager_updated_at
                         FROM coffee_state WHERE id = 1`;
-  if (!rows.length) return { ...DEFAULT_STATE, manager: { ...DEFAULT_MANAGER } };
-  const r = rows[0];
-  return {
-    status: r.status,
-    message: r.message ?? "",
-    updatedAt: r.updated_at == null ? null : Number(r.updated_at),
-    manager: {
-      state: r.manager_state || DEFAULT_MANAGER.state,
-      note: r.manager_note || "",
-      updatedAt: r.manager_updated_at == null ? null : Number(r.manager_updated_at),
-    },
-  };
+  const base = rows.length
+    ? {
+        status: rows[0].status,
+        message: rows[0].message ?? "",
+        updatedAt: rows[0].updated_at == null ? null : Number(rows[0].updated_at),
+        manager: {
+          state: rows[0].manager_state || DEFAULT_MANAGER.state,
+          note: rows[0].manager_note || "",
+          updatedAt:
+            rows[0].manager_updated_at == null ? null : Number(rows[0].manager_updated_at),
+        },
+      }
+    : { ...DEFAULT_STATE, manager: { ...DEFAULT_MANAGER } };
+  base.orders = await readOrders(db);
+  return base;
 }
 
 async function writeCoffee(db, status, message) {
@@ -86,6 +112,36 @@ async function writeManager(db, state, note) {
              SET manager_state = EXCLUDED.manager_state,
                  manager_note = EXCLUDED.manager_note,
                  manager_updated_at = EXCLUDED.manager_updated_at`;
+}
+
+async function addOrder(db, name) {
+  await ensureTable(db);
+  const now = Date.now();
+  await db`INSERT INTO coffee_orders (name, state, created_at, updated_at)
+           VALUES (${name}, 'queued', ${now}, ${now})`;
+}
+
+async function advanceOrder(db, id) {
+  await ensureTable(db);
+  const rows = await db`SELECT state FROM coffee_orders WHERE id = ${id}`;
+  if (!rows.length) return;
+  const idx = ORDER_FLOW.indexOf(rows[0].state);
+  if (idx < 0 || idx >= ORDER_FLOW.length - 1) {
+    await db`DELETE FROM coffee_orders WHERE id = ${id}`; // past "ready" -> served
+  } else {
+    await db`UPDATE coffee_orders SET state = ${ORDER_FLOW[idx + 1]}, updated_at = ${Date.now()}
+             WHERE id = ${id}`;
+  }
+}
+
+async function removeOrder(db, id) {
+  await ensureTable(db);
+  await db`DELETE FROM coffee_orders WHERE id = ${id}`;
+}
+
+async function clearOrders(db) {
+  await ensureTable(db);
+  await db`DELETE FROM coffee_orders`;
 }
 
 function send(res, code, obj) {
@@ -154,7 +210,26 @@ export async function handle(req, res, db) {
     if (body.verify) return send(res, 200, { ok: true });
 
     try {
-      if (body.manager) {
+      if (body.order) {
+        const o = body.order;
+        if (o.action === "add") {
+          const name = String(o.name || "").trim().slice(0, NAME_MAX);
+          if (!name) return send(res, 400, { error: "bad_order" });
+          await addOrder(db, name);
+        } else if (o.action === "advance") {
+          const id = Number(o.id);
+          if (!Number.isFinite(id)) return send(res, 400, { error: "bad_order" });
+          await advanceOrder(db, id);
+        } else if (o.action === "remove") {
+          const id = Number(o.id);
+          if (!Number.isFinite(id)) return send(res, 400, { error: "bad_order" });
+          await removeOrder(db, id);
+        } else if (o.action === "clear") {
+          await clearOrders(db);
+        } else {
+          return send(res, 400, { error: "bad_order" });
+        }
+      } else if (body.manager) {
         if (!MANAGER_STATES.includes(body.manager.state)) {
           return send(res, 400, { error: "bad_manager_state" });
         }

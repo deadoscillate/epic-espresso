@@ -228,10 +228,121 @@
   outline: none;
   border-color: var(--accent);
 }
+.manager__noterow {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+.manager__noterow .manager__note {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+.manager__noterow .btn {
+  flex-shrink: 0;
+}
+.manager__hint {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
 .manager__current {
   margin: 0.75rem 0 0;
   color: var(--text-dim);
   font-weight: 600;
+}
+
+/* Order queue -------------------------------------------------------------- */
+.orders-admin {
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.order-add {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.order-add__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.7rem 0.9rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.order-add__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.order-add__input:disabled {
+  opacity: 0.5;
+}
+.order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.7rem 0.6rem 0.85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.order-row[data-state="making"] {
+  border-left-color: var(--epic-teal);
+}
+.order-row[data-state="ready"] {
+  border-left-color: var(--epic-gold);
+}
+.order-row__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-row__pill {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.order-row__actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.order-row__advance,
+.order-row__remove {
+  padding: 0.45em 0.8em;
+}
+.order-row[data-state="ready"] .order-row__advance {
+  background: var(--epic-gold);
+  color: #1a1205;
+  border-color: var(--epic-gold);
+  font-weight: 800;
+}
+.order-empty {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+.order-empty[hidden] {
+  display: none;
 }
 
 /* Custom message field ----------------------------------------------------- */

@@ -10,6 +10,7 @@ import {
   MANAGER_STATES,
   MANAGER_ORDER,
   getManager,
+  getOrderState,
 } from "./statuses.js";
 import { formatClock, formatRelative, renderConnection } from "./util.js";
 
@@ -31,7 +32,13 @@ const els = {
   toast: document.getElementById("toast"),
   managerGrid: document.getElementById("manager-grid"),
   managerNote: document.getElementById("manager-note"),
+  managerNoteApply: document.getElementById("manager-note-apply"),
   managerCurrent: document.getElementById("manager-current"),
+  orderAdd: document.getElementById("order-add"),
+  orderName: document.getElementById("order-name"),
+  orderAddBtn: document.getElementById("order-add-btn"),
+  orderList: document.getElementById("order-list"),
+  orderEmpty: document.getElementById("order-empty"),
   gate: document.getElementById("pin-gate"),
   gateForm: document.getElementById("pin-form"),
   gateInput: document.getElementById("pin-input"),
@@ -97,6 +104,10 @@ function updateControls() {
   buttons.forEach((b) => (b.disabled = !enabled));
   managerButtons.forEach((b) => (b.disabled = !enabled));
   els.applyMessage.disabled = !enabled || !liveState;
+  els.managerNoteApply.disabled = !enabled || !liveState;
+  els.orderName.disabled = !enabled;
+  els.orderAddBtn.disabled = !enabled;
+  els.orderList.querySelectorAll("button").forEach((b) => (b.disabled = !enabled));
 }
 
 // --- Actions ----------------------------------------------------------------
@@ -127,12 +138,116 @@ async function commitManager(stateId) {
   updateControls();
   try {
     await store.setManager({ state: stateId, note: els.managerNote.value, pin });
+    managerNoteTouched = false;
     showToast(`Joe: ${MANAGER_STATES[stateId].label}.`, "ok");
   } catch (err) {
     handleWriteError(err, "Couldn’t update Joe’s status.");
   } finally {
     busy = false;
     updateControls();
+  }
+}
+
+// Save just the note, keeping Joe's current status (e.g. update "back ~2:30").
+async function applyManagerNoteOnly() {
+  if (!liveState) return;
+  const current = (liveState.manager && liveState.manager.state) || "available";
+  busy = true;
+  updateControls();
+  try {
+    await store.setManager({ state: current, note: els.managerNote.value, pin });
+    managerNoteTouched = false;
+    showToast("Joe’s note updated.", "ok");
+  } catch (err) {
+    handleWriteError(err, "Couldn’t update the note.");
+  } finally {
+    busy = false;
+    updateControls();
+  }
+}
+
+// --- Orders -----------------------------------------------------------------
+async function addOrder(e) {
+  e.preventDefault();
+  const name = els.orderName.value.trim();
+  if (!name) return;
+  busy = true;
+  updateControls();
+  try {
+    await store.addOrder({ name, pin });
+    els.orderName.value = "";
+    showToast(`Added ${name} to the queue.`, "ok");
+  } catch (err) {
+    handleWriteError(err, "Couldn’t add the order.");
+  } finally {
+    busy = false;
+    updateControls();
+    els.orderName.focus();
+  }
+}
+
+async function advanceOrder(id) {
+  busy = true;
+  updateControls();
+  try {
+    await store.advanceOrder({ id, pin });
+  } catch (err) {
+    handleWriteError(err, "Couldn’t update the order.");
+  } finally {
+    busy = false;
+    updateControls();
+  }
+}
+
+async function removeOrder(id) {
+  busy = true;
+  updateControls();
+  try {
+    await store.removeOrder({ id, pin });
+  } catch (err) {
+    handleWriteError(err, "Couldn’t remove the order.");
+  } finally {
+    busy = false;
+    updateControls();
+  }
+}
+
+function renderOrders(orders) {
+  els.orderList.textContent = "";
+  els.orderEmpty.hidden = orders.length > 0;
+  for (const o of orders) {
+    const info = getOrderState(o.state);
+    const li = document.createElement("li");
+    li.className = "order-row";
+    li.dataset.state = o.state;
+
+    const name = document.createElement("span");
+    name.className = "order-row__name";
+    name.textContent = o.name;
+
+    const pill = document.createElement("span");
+    pill.className = "order-row__pill";
+    pill.textContent = `${info.icon} ${info.label}`;
+
+    const actions = document.createElement("div");
+    actions.className = "order-row__actions";
+
+    const adv = document.createElement("button");
+    adv.type = "button";
+    adv.className = "btn order-row__advance";
+    adv.textContent = info.advanceLabel;
+    adv.addEventListener("click", () => advanceOrder(o.id));
+
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "btn order-row__remove";
+    rm.setAttribute("aria-label", `Remove ${o.name}`);
+    rm.textContent = "✕";
+    rm.addEventListener("click", () => removeOrder(o.id));
+
+    actions.append(adv, rm);
+    li.append(name, pill, actions);
+    els.orderList.appendChild(li);
   }
 }
 
@@ -206,7 +321,15 @@ els.message.addEventListener("input", () => {
 els.managerNote.addEventListener("input", () => {
   managerNoteTouched = true;
 });
+els.managerNote.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    applyManagerNoteOnly();
+  }
+});
+els.managerNoteApply.addEventListener("click", applyManagerNoteOnly);
 els.applyMessage.addEventListener("click", applyMessageOnly);
+els.orderAdd.addEventListener("submit", addOrder);
 
 // --- Render live state -------------------------------------------------------
 function render(state) {
@@ -250,6 +373,9 @@ function render(state) {
     ? `${mInfo.icon} ${mInfo.label} — ${manager.note}`
     : `${mInfo.icon} ${mInfo.label}`;
   if (!managerNoteTouched) els.managerNote.value = manager.note || "";
+
+  // Orders
+  renderOrders(state.orders || []);
 
   updateControls();
 }

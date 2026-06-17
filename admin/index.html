@@ -90,14 +90,39 @@
       <h2 class="section-label">Manager — Joe</h2>
       <section class="manager">
         <div class="manager__grid" id="manager-grid" role="group" aria-label="Joe's status"></div>
-        <input
-          id="manager-note"
-          class="manager__note"
-          maxlength="120"
-          placeholder="Optional note (e.g. back ~2:30)"
-          aria-label="Manager note"
-        />
+        <div class="manager__noterow">
+          <input
+            id="manager-note"
+            class="manager__note"
+            maxlength="120"
+            placeholder="Optional note (e.g. back ~2:30)"
+            aria-label="Manager note"
+          />
+          <button type="button" class="btn" id="manager-note-apply">Update note</button>
+        </div>
+        <p class="manager__hint">
+          Tapping a status above saves the note too — use “Update note” (or press
+          Enter) to change only the note.
+        </p>
         <p class="manager__current">Now: <span id="manager-current">—</span></p>
+      </section>
+
+      <!-- Order queue -->
+      <h2 class="section-label">Orders</h2>
+      <section class="orders-admin">
+        <form class="order-add" id="order-add">
+          <input
+            id="order-name"
+            class="order-add__input"
+            maxlength="40"
+            placeholder="Add a name to the queue…"
+            aria-label="Customer name"
+            autocomplete="off"
+          />
+          <button type="submit" class="btn btn-primary" id="order-add-btn">Add</button>
+        </form>
+        <ul class="order-list" id="order-list"></ul>
+        <p class="order-empty" id="order-empty">No orders in the queue.</p>
       </section>
     </div>
 

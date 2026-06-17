@@ -141,9 +141,11 @@ the admin URL installs as **Espresso Admin** (opens the PIN screen).
 
 ## Using it
 
-**Status board (`/display`)** — title, a big icon, the status in huge text, the
-message, and last-updated time, themed per status. Updates live; no refresh.
-Tap **⛶** for full-screen (it also keeps the screen awake where supported).
+**Status board (`/display`)** — title, the big "Epic Brew" status card, the
+message, and last-updated time, themed per status. Shows a **Joe** badge when the
+manager isn't free, plus the **order queue** — a newly-Ready order triggers a
+full-screen flash and a chime (**🔔** toggles the sound). Updates live; no
+refresh. Tap **⛶** for full-screen (it also keeps the screen awake where supported).
 
 **Admin (`/admin`)**
 
@@ -152,6 +154,10 @@ Tap **⛶** for full-screen (it also keeps the screen awake where supported).
 - The **Optional message** overrides the status's default note (leave blank to
   use the default — the placeholder shows what that'll be).
 - **Update message only** changes the note without changing the status.
+- **Manager — Joe:** set Available / In a meeting / Heads-down / Out, with an
+  optional "back ~2:30" note (shown as a badge on the board).
+- **Orders:** add a name to the queue, then advance it Queued → Making → Ready
+  (Ready flashes + chimes on the board); **Serve** clears it.
 - The **Currently live** card mirrors the board; failed saves show a clear error.
 
 Both pages show a **connection indicator**: green = live, amber = demo mode,
@@ -228,9 +234,10 @@ Local development is **optional** (you don't need it to deploy). If you want it,
 
 ## Roadmap
 
-Planned features — a manager "in a meeting" status, an order tracker (names +
-drinks), auto-reset, a QR install code, Teams/Discord notifications, an animated
-mascot, and more — live in **[ROADMAP.md](ROADMAP.md)**.
+Shipped recently: the **Joe "in a meeting" status** and the **order tracker**.
+Still planned — auto-reset, a QR install code, AI-generated daily card art,
+Teams/Discord notifications, an animated mascot, and more — live in
+**[ROADMAP.md](ROADMAP.md)**.
 
 ---
 

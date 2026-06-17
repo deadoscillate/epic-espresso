@@ -32,6 +32,7 @@ draft, not a contract.
 - Espresso-cup app icon + Epic navy/gold theme
 - Network-first service worker (auto-updates so fixes ship without a stale cache)
 - Manager status — "Joe is in a meeting" (manual toggle + optional note)
+- Order tracker — name-only queue (Queued → Making → Ready) on the board, with a "your order is ready" flash + chime
 
 ---
 
@@ -67,38 +68,28 @@ admin gains a "Manager" section; board polls and renders the badge.
 optional "back at" note; shown as a badge on the board and landing. Auto/calendar
 sourcing remains a Later item.
 
-### 2. Order tracker — names + drinks  · Effort: **M**
+### ✅ 2. Order tracker — shipped
 
 **Goal:** a simple live queue so the barista knows what to make and people can
 see where their order is.
 
-**MVP scope**
-- Admin: add an order (name + drink + optional note), advance its state
-  (Queued → Making → Ready → cleared), and remove it.
-- Board: a "Now serving / Up next" list, or a dedicated `/orders` view for a
-  second screen.
-- First name only on any public-facing screen.
+**Shipped scope**
+- Admin "Orders" panel (PIN-gated): add a name, advance it
+  Queued → Making → Ready, "Serve" to clear it, or remove it.
+- Board shows the queue on the **main board** — chips grouped Ready → Making →
+  Queued; a newly-Ready order triggers a full-screen flash + a chime
+  (with a 🔔 mute toggle that also unlocks audio on kiosks).
+- Name only — no drink field.
 
-**Data (Neon)**
-```sql
-CREATE TABLE orders (
-  id         serial PRIMARY KEY,
-  name       text NOT NULL,
-  drink      text NOT NULL,
-  note       text DEFAULT '',
-  state      text NOT NULL DEFAULT 'queued', -- queued | making | ready | done
-  created_at bigint,
-  updated_at bigint
-);
-```
+**Data (Neon):** a `coffee_orders` table (`id, name, state, created_at,
+updated_at`), created on demand like the rest of the schema.
 
-**Approach:** `/api/orders` (GET list public; POST/PATCH/DELETE PIN-gated);
-admin "Orders" panel; board widget polls the list. Auto-clear `done`/`ready`
-orders after N minutes to keep it tidy.
+**Approach:** folded into `/api/status` (the same single poll as coffee + Joe)
+with `{ order: { action } }` writes, kept behind the `store.js` abstraction.
 
-**Decided:** name-only entry (no drink field); Queued → Making → Ready; with a
-"your order is ready" flash/chime on the board.
-**Still open:** show on the main board, or a separate `/orders` screen?
+**Decided & shipped:** name-only; Queued → Making → Ready (advancing past Ready
+"serves"/removes it); shown on the **main board** with a ready flash + chime.
+A dedicated `/orders` screen for a second monitor remains a possible later add.
 
 ### 3. Auto-reset after inactivity  · Effort: **S**
 

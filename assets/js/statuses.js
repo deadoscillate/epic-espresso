@@ -96,3 +96,19 @@ export const MANAGER_STATES = {
 export function getManager(state) {
   return MANAGER_STATES[state] || MANAGER_STATES[DEFAULT_MANAGER_STATE];
 }
+
+// -----------------------------------------------------------------------------
+// Order queue — a name moves Queued → Making → Ready; advancing past Ready
+// "serves" it (drops it off the board). Keep ORDER_FLOW in sync with api/status.js.
+// -----------------------------------------------------------------------------
+export const ORDER_FLOW = ["queued", "making", "ready"];
+
+export const ORDER_STATES = {
+  queued: { id: "queued", label: "Queued", icon: "📝", advanceLabel: "Start" },
+  making: { id: "making", label: "Making", icon: "⏳", advanceLabel: "Mark ready" },
+  ready: { id: "ready", label: "Ready", icon: "✅", advanceLabel: "Serve ✓" },
+};
+
+export function getOrderState(state) {
+  return ORDER_STATES[state] || ORDER_STATES.queued;
+}

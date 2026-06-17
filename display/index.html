@@ -46,6 +46,16 @@
           <button
             type="button"
             class="icon-btn"
+            id="sound-btn"
+            aria-pressed="true"
+            title="Order chime"
+            aria-label="Toggle order chime"
+          >
+            🔔
+          </button>
+          <button
+            type="button"
+            class="icon-btn"
             id="fullscreen-btn"
             aria-pressed="false"
             aria-label="Toggle fullscreen"
@@ -75,11 +85,23 @@
         <p class="visually-hidden" id="display-live" role="status" aria-live="polite"></p>
       </div>
 
+      <section class="orders" id="orders" aria-label="Order queue" hidden>
+        <h2 class="orders__heading">Orders</h2>
+        <ul class="orders__list" id="orders-list"></ul>
+      </section>
+
       <footer class="display__footer">
         <span>Updated <span id="updated-abs">—</span></span>
         <span class="dot" aria-hidden="true">•</span>
         <span id="updated-rel">never</span>
       </footer>
+
+      <div class="order-flash" id="order-flash" hidden>
+        <div class="order-flash__card">
+          <div class="order-flash__icon" aria-hidden="true">☕</div>
+          <div class="order-flash__text" id="order-flash-text">Order ready!</div>
+        </div>
+      </div>
     </main>
 
     <script type="module" src="../assets/js/display.js"></script>
