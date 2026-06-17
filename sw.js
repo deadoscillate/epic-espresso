@@ -1,7 +1,7 @@
 // Service worker — installable + offline-capable.
 // Network-first for everything (so updates always show when online); the cache
 // is only a fallback for offline. The live API is never intercepted.
-const CACHE = "bsmeb-v7";
+const CACHE = "bsmeb-v8";
 const SHELL = [
   "/",
   "/display",
