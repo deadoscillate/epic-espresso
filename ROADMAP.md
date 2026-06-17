@@ -38,6 +38,7 @@ draft, not a contract.
 - Google sign-in (OAuth) + visitor accounts (admin stays on the PIN)
 - Self-serve ordering — signed-in visitors order from the menu; per-person cap
 - Inventory — admin-managed menu (orderable items) + back-office stock counts
+- Tipping — Venmo / Stripe link / crypto handoff buttons + QR on the order page (env-configured)
 
 ---
 

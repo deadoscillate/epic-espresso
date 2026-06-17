@@ -64,10 +64,16 @@
         <ul class="queue" id="queue"></ul>
         <p class="order__empty" id="queue-empty" hidden>The queue is empty.</p>
       </section>
+
+      <section class="tips" id="tips" hidden>
+        <h2 class="section-label">Tip the barista ☕</h2>
+        <div class="tips__grid" id="tip-methods"></div>
+      </section>
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+    <script src="/assets/js/vendor/qrcode.js"></script>
     <script type="module" src="../assets/js/order.js"></script>
   </body>
 </html>

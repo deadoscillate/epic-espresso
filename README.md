@@ -123,6 +123,9 @@ Both projects auto-deploy on every push to `main`.
 | `GOOGLE_CLIENT_ID`                | public (ordering)    | Google OAuth client ID — enables visitor sign-in + self-serve orders |
 | `GOOGLE_CLIENT_SECRET`            | public (ordering)    | Google OAuth client secret |
 | `SESSION_SECRET`                  | public (ordering)    | Long random string used to sign session cookies |
+| `TIP_VENMO`                       | public (optional)    | Venmo username — shows a "Tip on Venmo" button/QR on /order |
+| `TIP_STRIPE_URL`                  | public (optional)    | A Stripe Payment Link URL — shows a "Tip with card" button/QR |
+| `TIP_CRYPTO_ADDRESS`              | public (optional)    | Wallet address — shows a tip QR + copyable address (`TIP_CRYPTO_LABEL`, `TIP_CRYPTO_URI` optional) |
 
 `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` are also accepted. No secrets ever live
 in the repo. Visitor sign-in is **optional** — until the three Google vars are
@@ -185,7 +188,9 @@ for full-screen (it also keeps the screen awake where supported).
 **Order (`/order`)** — visitors sign in with Google, pick an item from the menu,
 and watch the live queue with their own orders highlighted (their phone buzzes
 when it's ready). Each person is capped at a few active orders. Admin still
-serves/advances from `/admin`.
+serves/advances from `/admin`. If any `TIP_*` var is set, a **Tip the barista**
+section appears with buttons + QR codes (Venmo / Stripe link / crypto) — these
+are handoff links only; no money flows through the app.
 
 Both pages show a **connection indicator**: green = live, amber = demo mode,
 red = reconnecting.

@@ -4,6 +4,7 @@
 import { createCoffeeStore } from "./store.js";
 import { getStatus, getOrderState } from "./statuses.js";
 import { getMe, logout } from "./auth.js";
+import { setupTips } from "./tips.js";
 import { renderConnection } from "./util.js";
 
 const MY_KEY = "ee:myorders";
@@ -23,6 +24,8 @@ const els = {
   queue: document.getElementById("queue"),
   queueEmpty: document.getElementById("queue-empty"),
   ready: document.getElementById("order-ready"),
+  tips: document.getElementById("tips"),
+  tipMethods: document.getElementById("tip-methods"),
   toast: document.getElementById("toast"),
   connection: document.getElementById("connection"),
 };
@@ -145,6 +148,7 @@ function renderQueue(state) {
 }
 
 async function start() {
+  setupTips(els.tips, els.tipMethods); // independent of sign-in
   const info = await getMe();
   els.loading.hidden = true;
 
