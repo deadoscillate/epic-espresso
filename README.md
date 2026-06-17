@@ -119,7 +119,12 @@ Both projects auto-deploy on every push to `main`.
 | `DATABASE_URL`                    | both projects        | Neon connection string (added automatically by Storage)  |
 | `ADMIN_PIN`                       | admin project (req.) | Passcode required to write. Set on public too if single-project |
 | `APP_ROLE`                        | both                 | `public` = read-only + admin hidden; `admin`/unset = full |
-| `AUTO_RESET_MINUTES`              | both (optional)      | Revert the status to Closed after this many idle minutes (default `30`; `0` = off) |
+| `AUTO_RESET_MINUTES`              | both (optional)      | Revert the status to Closed after this many idle minutes (default `30`; `0` = off). Ignored when scheduling is on |
+| `SCHEDULE_ENABLED`                | both (optional)      | Auto open/close by the clock — **on by default** (`false` disables). Supersedes `AUTO_RESET_MINUTES` |
+| `SCHEDULE_OPEN` / `SCHEDULE_CLOSE`| both (optional)      | Local open/close `HH:MM` (defaults `08:00` / `16:30`) |
+| `SCHEDULE_TZ`                     | both (optional)      | IANA timezone (default `America/Chicago`; handles DST automatically) |
+| `SCHEDULE_DAYS`                   | both (optional)      | Business days, e.g. `1-5` = Mon–Fri (default) |
+| `SCHEDULE_OPEN_STATUS`            | both (optional)      | Status set at opening (default `ready`) |
 | `GOOGLE_CLIENT_ID`                | public (ordering)    | Google OAuth client ID — enables visitor sign-in + self-serve orders |
 | `GOOGLE_CLIENT_SECRET`            | public (ordering)    | Google OAuth client secret |
 | `SESSION_SECRET`                  | public (ordering)    | Long random string used to sign session cookies |
@@ -165,10 +170,12 @@ the admin URL installs as **Espresso Admin** (opens the PIN screen).
 message, and last-updated time, themed per status. Shows a **Joe** badge when the
 manager isn't free, plus the **order queue** — a newly-Ready order triggers a
 full-screen flash and a chime (**🔔** toggles the sound). A **QR code** in the
-corner lets people scan to open/install the app on their phone, and if the status
-sits untouched for ~30 min it auto-reverts to **Closed** so the board never lies
-after hours (tune via `AUTO_RESET_MINUTES`). Updates live; no refresh. Tap **⛶**
-for full-screen (it also keeps the screen awake where supported).
+corner lets people scan to open/install the app on their phone. The board runs on
+a **schedule** (default 08:00–16:30 Central, Mon–Fri): it forces **Closed** outside
+those hours and opens itself in the morning, so it never lies overnight — tune via
+the `SCHEDULE_*` vars, or set `SCHEDULE_ENABLED=false` to fall back to the idle
+`AUTO_RESET_MINUTES` behavior. Updates live; no refresh. Tap **⛶** for full-screen
+(it also keeps the screen awake where supported).
 
 **Admin (`/admin`)**
 

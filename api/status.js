@@ -15,6 +15,12 @@
 //   ADMIN_PIN     -> passcode required to write
 //   APP_ROLE      -> "public" makes this deployment read-only (hides admin)
 //   AUTO_RESET_MINUTES -> revert to Closed after N min idle (default 30; 0 = off)
+//   SCHEDULE_ENABLED   -> auto open/close by the clock (default on; "false" disables)
+//   SCHEDULE_OPEN/CLOSE-> "HH:MM" local time (defaults 08:00 / 16:30)
+//   SCHEDULE_TZ        -> IANA timezone (default America/Chicago; handles DST)
+//   SCHEDULE_DAYS      -> business days, e.g. "1-5" = Mon–Fri (default)
+//   SCHEDULE_OPEN_STATUS -> status set at opening (default "ready")
+//   (when scheduling is on it supersedes AUTO_RESET_MINUTES)
 // -----------------------------------------------------------------------------
 
 import { neon } from "@neondatabase/serverless";
@@ -32,6 +38,84 @@ const ORDER_FLOW = ["queued", "making", "ready"]; // advancing past "ready" serv
 const AUTO_RESET_MIN = Number(process.env.AUTO_RESET_MINUTES ?? 30);
 const AUTO_RESET_MS =
   Number.isFinite(AUTO_RESET_MIN) && AUTO_RESET_MIN > 0 ? AUTO_RESET_MIN * 60000 : 0;
+
+// Scheduled open/close: outside business hours the board is forced to Closed, and
+// at opening it flips back to an "open" status. Read-time + IANA timezone, so it's
+// DST-correct with no cron. When enabled it supersedes the idle auto-reset above.
+const SCHEDULE_CFG = buildScheduleConfig();
+function buildScheduleConfig() {
+  const parseHM = (s, def) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || "").trim());
+    if (!m) return def;
+    const h = Number(m[1]);
+    const mi = Number(m[2]);
+    return h <= 23 && mi <= 59 ? h * 60 + mi : def;
+  };
+  const parseDays = (s) => {
+    const str = String(s || "").trim();
+    if (!str) return new Set([1, 2, 3, 4, 5]);
+    const set = new Set();
+    for (const part of str.split(",")) {
+      const r = part.split("-").map((x) => Number(x.trim()));
+      if (r.length === 2 && Number.isInteger(r[0]) && Number.isInteger(r[1])) {
+        for (let d = r[0]; d <= r[1]; d++) set.add(((d % 7) + 7) % 7);
+      } else if (r.length === 1 && Number.isInteger(r[0])) {
+        set.add(((r[0] % 7) + 7) % 7);
+      }
+    }
+    return set.size ? set : new Set([1, 2, 3, 4, 5]);
+  };
+  const openStatus = process.env.SCHEDULE_OPEN_STATUS;
+  return {
+    enabled: !/^(0|false|off|no)$/i.test(process.env.SCHEDULE_ENABLED || ""),
+    tz: process.env.SCHEDULE_TZ || "America/Chicago",
+    open: parseHM(process.env.SCHEDULE_OPEN, 8 * 60), // 08:00
+    close: parseHM(process.env.SCHEDULE_CLOSE, 16 * 60 + 30), // 16:30
+    days: parseDays(process.env.SCHEDULE_DAYS), // Mon–Fri
+    openStatus: ["brewing", "ready", "empty", "cleaning", "beans_low", "maintenance"].includes(openStatus)
+      ? openStatus
+      : "ready",
+  };
+}
+
+const WEEKDAY = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+function tzInfo(epochMs, tz) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    hourCycle: "h23",
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date(epochMs));
+  const g = (t) => parts.find((p) => p.type === t)?.value;
+  return {
+    date: `${g("year")}-${g("month")}-${g("day")}`,
+    mins: Number(g("hour")) * 60 + Number(g("minute")),
+    day: WEEKDAY[g("weekday")] ?? 0,
+  };
+}
+
+// Pure decision (exported for tests): given the stored state + "now", returns the
+// status the schedule wants to force, or null to leave it alone.
+export function scheduleDecision(state, nowEpoch, cfg) {
+  if (!cfg.enabled) return null;
+  const now = tzInfo(nowEpoch, cfg.tz);
+  const isOpen = cfg.days.has(now.day) && now.mins >= cfg.open && now.mins < cfg.close;
+  if (!isOpen) {
+    return state.status !== "closed" ? { status: "closed" } : null;
+  }
+  if (state.status === "closed") {
+    const upd = state.updatedAt ? tzInfo(state.updatedAt, cfg.tz) : null;
+    const closedBeforeOpen =
+      !upd || upd.date < now.date || (upd.date === now.date && upd.mins < cfg.open);
+    if (closedBeforeOpen) return { status: cfg.openStatus };
+  }
+  return null;
+}
+
 const DEFAULT_STATE = { status: "closed", message: "", updatedAt: null };
 const DEFAULT_MANAGER = { state: "available", note: "", updatedAt: null };
 
@@ -112,6 +196,15 @@ async function maybeAutoReset(db, state) {
   if (state.status === "closed" || state.updatedAt == null) return state;
   if (Date.now() - state.updatedAt < AUTO_RESET_MS) return state;
   await writeCoffee(db, "closed", "");
+  return readState(db);
+}
+
+// Apply the open/close schedule (force Closed off-hours; open at the start of the
+// business day). Runs read-time; returns the (possibly re-read) state.
+async function applySchedule(db, state) {
+  const decision = scheduleDecision(state, Date.now(), SCHEDULE_CFG);
+  if (!decision) return state;
+  await writeCoffee(db, decision.status, "");
   return readState(db);
 }
 
@@ -232,7 +325,10 @@ export async function handle(req, res, db) {
 
   if (req.method === "GET") {
     try {
-      return send(res, 200, await maybeAutoReset(db, await readState(db)));
+      let state = await readState(db);
+      // Scheduling owns open/close when enabled; otherwise the idle auto-reset does.
+      state = SCHEDULE_CFG.enabled ? await applySchedule(db, state) : await maybeAutoReset(db, state);
+      return send(res, 200, state);
     } catch (err) {
       console.error("[api] DB read failed:", err);
       return send(res, 502, { error: "db_read_failed" });
