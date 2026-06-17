@@ -115,14 +115,6 @@ vendored zero-dependency lib (`assets/js/vendor/qrcode.js`) using
 
 ## 🧊 Later
 
-- **AI-generated daily card art** — regenerate Epic-chan's pose/scene each day
-  with an image model (e.g. OpenAI `gpt-image-1`). Feasible, with caveats:
-  generate *text-free* scene art and keep the status word/tagline as the current
-  HTML overlay (models render baked-in text unreliably); hold Epic-chan
-  consistent with a fixed character prompt + a reference image; run on a daily
-  **Vercel Cron**, store output in **Vercel Blob**, and fall back to the current
-  cards on any failure. Needs `OPENAI_API_KEY`; ~7 images/day at a few cents
-  each. **L**
 - **Calendar-driven manager status** — auto-set Joe's "in a meeting" from
   Microsoft 365 / Outlook (Graph API) or Teams presence, server-side poll. **L**
 - **Notifications** — post to Teams/Discord on key changes ("☕ Coffee is READY",
