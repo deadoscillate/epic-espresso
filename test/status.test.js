@@ -3,17 +3,63 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import { handle, scheduleDecision } from "../api/status.js";
+import { PIN_RATE_LIMIT } from "../lib/server-security.js";
 
-function fakeDb() {
+function fakeDb({ status = "ready", menu = ["Latte"], initialOrders = 0 } = {}) {
   const orders = [];
   const queries = [];
-  let coffeeState = null;
+  const rateLimits = new Map();
+  for (let i = 0; i < initialOrders; i++) {
+    orders.push({
+      id: i + 1,
+      name: `Person ${i + 1}`,
+      item: "Latte",
+      state: "queued",
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    });
+  }
+  let coffeeState = {
+    status,
+    message: "",
+    updated_at: Date.now(),
+    manager_state: null,
+    manager_note: null,
+    manager_updated_at: null,
+    schedule_enabled: false,
+    schedule_open: null,
+    schedule_close: null,
+    schedule_tz: null,
+    schedule_days: null,
+    schedule_open_status: null,
+    schedule_updated_at: null,
+  };
 
   const db = async (strings, ...values) => {
     const query = strings.join("?").replace(/\s+/g, " ").trim();
     queries.push({ query, values });
 
-    if (query.startsWith("SELECT name FROM inventory")) return [{ name: "Latte" }];
+    if (query.startsWith("SELECT attempts, window_start FROM coffee_rate_limits")) {
+      const current = rateLimits.get(values[0]);
+      return current ? [current] : [];
+    }
+    if (query.startsWith("INSERT INTO coffee_rate_limits")) {
+      const [key, now, cutoff] = values;
+      const current = rateLimits.get(key);
+      const next = !current || current.window_start <= cutoff
+        ? { attempts: 1, window_start: now }
+        : { attempts: current.attempts + 1, window_start: current.window_start };
+      rateLimits.set(key, next);
+      return [next];
+    }
+    if (query.startsWith("DELETE FROM coffee_rate_limits WHERE key")) {
+      rateLimits.delete(values[0]);
+      return [];
+    }
+    if (query.startsWith("SELECT name FROM inventory")) return menu.map((name) => ({ name }));
+    if (query.startsWith("SELECT COUNT(*) AS count FROM coffee_orders")) {
+      return [{ count: String(orders.length) }];
+    }
     if (query.startsWith("INSERT INTO coffee_orders")) {
       const order = {
         id: orders.length + 1,
@@ -52,11 +98,11 @@ function fakeDb() {
   return { db, orders, queries };
 }
 
-function invoke(body, db) {
+function invoke(body, db, { raw, headers: requestHeaders } = {}) {
   return new Promise((resolve, reject) => {
     const req = new EventEmitter();
     req.method = "POST";
-    req.headers = {};
+    req.headers = requestHeaders || {};
 
     const headers = {};
     const res = {
@@ -75,7 +121,7 @@ function invoke(body, db) {
 
     handle(req, res, db).catch(reject);
     queueMicrotask(() => {
-      req.emit("data", Buffer.from(JSON.stringify(body)));
+      req.emit("data", Buffer.from(raw ?? JSON.stringify(body)));
       req.emit("end");
     });
   });
@@ -105,6 +151,42 @@ test("guest and admin order authorization", async (t) => {
     assert.equal(orders.length, 0);
   });
 
+  await t.test("a guest cannot order while the bar is closed", async () => {
+    const { db, orders } = fakeDb({ status: "closed" });
+    const result = await invoke({ order: { action: "add", name: "Chris", item: "Latte" } }, db);
+
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, "bar_unavailable");
+    assert.equal(orders.length, 0);
+  });
+
+  await t.test("a guest cannot bypass an empty menu", async () => {
+    const { db, orders } = fakeDb({ menu: [] });
+    const result = await invoke({ order: { action: "add", name: "Chris", item: "Latte" } }, db);
+
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error, "bad_item");
+    assert.equal(orders.length, 0);
+  });
+
+  await t.test("menu item names use the inventory limit", async () => {
+    const item = "x".repeat(60);
+    const { db, orders } = fakeDb({ menu: [item] });
+    const result = await invoke({ order: { action: "add", name: "Chris", item } }, db);
+
+    assert.equal(result.status, 200);
+    assert.equal(orders[0].item, item);
+  });
+
+  await t.test("the public queue has a hard capacity", async () => {
+    const { db, orders } = fakeDb({ initialOrders: 50 });
+    const result = await invoke({ order: { action: "add", name: "Chris", item: "Latte" } }, db);
+
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, "queue_full");
+    assert.equal(orders.length, 50);
+  });
+
   await t.test("an incorrect supplied PIN cannot fall through to guest ordering", async () => {
     const { db, orders } = fakeDb();
     const result = await invoke(
@@ -123,6 +205,28 @@ test("guest and admin order authorization", async (t) => {
 
     assert.equal(result.status, 401);
     assert.equal(result.body.error, "bad_pin");
+    assert.equal(queries.some(({ query }) => query.startsWith("INSERT INTO coffee_state")), false);
+  });
+
+  await t.test("repeated bad PINs are rate limited", async () => {
+    const { db } = fakeDb();
+    for (let attempt = 0; attempt < PIN_RATE_LIMIT.max; attempt++) {
+      const result = await invoke({ verify: true, pin: "wrong" }, db);
+      assert.equal(result.status, 401);
+    }
+    const blocked = await invoke({ verify: true, pin: "wrong" }, db);
+    assert.equal(blocked.status, 429);
+    assert.equal(blocked.body.error, "rate_limited");
+    assert.ok(Number(blocked.headers["retry-after"]) > 0);
+  });
+
+  await t.test("oversized request bodies are rejected", async () => {
+    const { db, queries } = fakeDb();
+    const raw = JSON.stringify({ status: "ready", message: "x".repeat(9000), pin: "4827" });
+    const result = await invoke(null, db, { raw });
+
+    assert.equal(result.status, 413);
+    assert.equal(result.body.error, "body_too_large");
     assert.equal(queries.length, 0);
   });
 
@@ -205,7 +309,10 @@ test("operating schedule updates are validated and PIN protected", async (t) => 
 
     assert.equal(result.status, 401);
     assert.equal(result.body.error, "bad_pin");
-    assert.equal(queries.length, 0);
+    assert.equal(
+      queries.some(({ query }) => query.startsWith("INSERT INTO coffee_state (") && query.includes("schedule_enabled")),
+      false
+    );
   });
 
   await t.test("rejects closing times before opening times", async () => {

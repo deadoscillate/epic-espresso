@@ -2,7 +2,7 @@
 // /api/status — the shared state, backed by Neon (serverless Postgres)
 // -----------------------------------------------------------------------------
 //   GET  -> { status, message, updatedAt, manager: {…}, schedule: {…}, orders: […] }
-//   POST -> creates guest orders or performs PIN-protected admin updates. Partial:
+//   POST -> creates guarded guest orders or performs PIN-protected admin updates. Partial:
 //             { status, message, pin }            -> coffee status
 //             { manager: { state, note }, pin }   -> manager (Joe) presence
 //             { schedule: { enabled, open, close, tz, days, openStatus }, pin }
@@ -21,10 +21,26 @@
 // -----------------------------------------------------------------------------
 
 import { neon } from "@neondatabase/serverless";
+import {
+  CUSTOMER_NAME_MAX,
+  ITEM_NAME_MAX,
+  MAX_ACTIVE_ORDERS,
+  ORDERABLE_STATUSES,
+} from "../shared/constants.js";
+import {
+  clearRateLimit,
+  inspectRateLimit,
+  ORDER_RATE_LIMIT,
+  PIN_RATE_LIMIT,
+  pinMatches,
+  rateLimitKey,
+  readJsonBody,
+  recordRateLimitAttempt,
+  sendRateLimited,
+} from "../lib/server-security.js";
 
 const MESSAGE_MAX = 280;
 const NOTE_MAX = 120;
-const NAME_MAX = 40;
 const STATUSES = ["brewing", "ready", "empty", "cleaning", "closed", "beans_low", "maintenance"];
 const OPEN_STATUSES = STATUSES.filter((status) => status !== "closed");
 const MANAGER_STATES = ["available", "meeting", "heads_down", "out"];
@@ -334,18 +350,24 @@ async function addOrder(db, name, item) {
   return rows.length ? Number(rows[0].id) : null;
 }
 
+async function activeOrderCount(db) {
+  await ensureTable(db);
+  const rows = await db`SELECT COUNT(*) AS count FROM coffee_orders`;
+  return Number(rows[0]?.count) || 0;
+}
+
 // A visitor may only order something on the menu. If no items are marked
-// available yet, fall back to accepting any non-empty name (menu not set up).
+// available (or Inventory has not been initialized), ordering stays closed.
 async function orderableItem(db, raw) {
-  const item = String(raw || "").trim().slice(0, NAME_MAX);
+  const item = String(raw || "").trim().slice(0, ITEM_NAME_MAX);
   if (!item) return null;
   let available = [];
   try {
     available = await db`SELECT name FROM inventory WHERE available = true`;
   } catch {
-    return item; // inventory table not created yet
+    return null;
   }
-  if (!available.length) return item;
+  if (!available.length) return null;
   const match = available.find((r) => r.name.toLowerCase() === item.toLowerCase());
   return match ? match.name : null;
 }
@@ -379,23 +401,6 @@ function send(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-function readBody(req) {
-  return new Promise((resolve) => {
-    let data = "";
-    req.on("data", (c) => (data += c));
-    req.on("end", () => resolve(data));
-    req.on("error", () => resolve(""));
-  });
-}
-
-// Length-aware constant-time-ish compare for the PIN.
-function pinMatches(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 // Exported for testing; `db` is the Neon tagged-template `sql` function.
 export async function handle(req, res, db) {
   res.setHeader("Cache-Control", "no-store");
@@ -424,9 +429,11 @@ export async function handle(req, res, db) {
 
     let body = {};
     try {
-      body = JSON.parse((await readBody(req)) || "{}");
-    } catch {
-      return send(res, 400, { error: "bad_json" });
+      body = await readJsonBody(req);
+    } catch (err) {
+      return send(res, err.code === "body_too_large" ? 413 : 400, {
+        error: err.code === "body_too_large" ? "body_too_large" : "bad_json",
+      });
     }
     const submittedPin = typeof body.pin === "string" ? body.pin : "";
     const pinProvided = submittedPin.length > 0;
@@ -436,12 +443,26 @@ export async function handle(req, res, db) {
     // the admin path below, so a stale/incorrect admin PIN still fails closed.
     if (body.order && body.order.action === "add" && !pinProvided) {
       try {
-        const name = String(body.order.name || "").trim().slice(0, NAME_MAX);
+        const orderRateKey = rateLimitKey(req, "guest-order");
+        const recordedLimit = await recordRateLimitAttempt(db, orderRateKey, ORDER_RATE_LIMIT);
+        if (recordedLimit.limited) return sendRateLimited(res, recordedLimit.retryAfter);
+
+        const name = String(body.order.name || "").trim().slice(0, CUSTOMER_NAME_MAX);
         if (!name) return send(res, 400, { error: "bad_order" });
+        let state = await readState(db);
+        state = state.schedule.enabled
+          ? await applySchedule(db, state)
+          : await maybeAutoReset(db, state);
+        if (!ORDERABLE_STATUSES.includes(state.status)) {
+          return send(res, 409, { error: "bar_unavailable", status: state.status });
+        }
         const item = await orderableItem(db, body.order.item);
         if (!item) return send(res, 400, { error: "bad_item" });
+        if ((await activeOrderCount(db)) >= MAX_ACTIVE_ORDERS) {
+          return send(res, 409, { error: "queue_full" });
+        }
         const id = await addOrder(db, name, item);
-        const state = await readState(db);
+        state = await readState(db);
         state.createdOrderId = id;
         return send(res, 200, state);
       } catch (err) {
@@ -452,16 +473,24 @@ export async function handle(req, res, db) {
 
     // Everything else is an admin action protected by the shared PIN.
     if (!adminPin) return send(res, 503, { error: "pin_not_configured" });
-    if (!pinOk) return send(res, 401, { error: "bad_pin" });
+    const pinRateKey = rateLimitKey(req, "admin-pin");
+    const pinLimit = await inspectRateLimit(db, pinRateKey, PIN_RATE_LIMIT);
+    if (pinLimit.limited) return sendRateLimited(res, pinLimit.retryAfter);
+    if (!pinOk) {
+      const failedPinLimit = await recordRateLimitAttempt(db, pinRateKey, PIN_RATE_LIMIT);
+      if (failedPinLimit.limited) return sendRateLimited(res, failedPinLimit.retryAfter);
+      return send(res, 401, { error: "bad_pin" });
+    }
+    await clearRateLimit(db, pinRateKey);
     if (body.verify) return send(res, 200, { ok: true });
 
     try {
       if (body.order) {
         const o = body.order;
         if (o.action === "add") {
-          const name = String(o.name || "").trim().slice(0, NAME_MAX);
+          const name = String(o.name || "").trim().slice(0, CUSTOMER_NAME_MAX);
           if (!name) return send(res, 400, { error: "bad_order" });
-          const item = String(o.item || "").trim().slice(0, NAME_MAX);
+          const item = String(o.item || "").trim().slice(0, ITEM_NAME_MAX);
           await addOrder(db, name, item);
         } else if (o.action === "advance") {
           const id = Number(o.id);

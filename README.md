@@ -55,8 +55,9 @@ One tiny shared state object drives everything:
 - **One site:** landing, ordering, status board, and admin all run on one Vercel
   project. `/admin` is reachable from the same domain, but its controls stay
   locked until the server verifies the configured PIN.
-- **Fallback:** if the API isn't reachable (e.g. the database isn't set up yet), the app
-  drops to a clearly-labelled **demo mode** (localStorage, single device).
+- **Outages:** if the API isn't reachable, the app shows its last live snapshot,
+  disables writes, and retries automatically. Local demo mode is limited to
+  localhost or an explicit `?demo=1` URL.
 
 All of this is wired through one abstraction — `assets/js/store.js` — so the UI
 never talks to the backend directly.
@@ -105,6 +106,11 @@ retiring the second Vercel project.
 | `SCHEDULE_TZ`                     | no       | Initial IANA timezone (default `America/Chicago`; DST-aware) |
 | `SCHEDULE_DAYS`                   | no       | Initial business days, e.g. `1-5` = Mon–Fri (default) |
 | `SCHEDULE_OPEN_STATUS`            | no       | Initial status set at opening (default `ready`) |
+| `ORDER_RATE_LIMIT_MAX`            | no       | Public order attempts allowed per IP/window (default `20`) |
+| `ORDER_RATE_LIMIT_WINDOW_MINUTES` | no       | Public order rate-limit window (default `10`) |
+| `PIN_RATE_LIMIT_MAX`              | no       | Failed PIN attempts allowed per IP/window (default `8`) |
+| `PIN_RATE_LIMIT_WINDOW_MINUTES`   | no       | Failed PIN rate-limit window (default `15`) |
+| `RATE_LIMIT_SALT`                 | no       | Optional secret used when hashing client IPs (falls back to `ADMIN_PIN`) |
 | `TIP_VENMO`                       | no       | Venmo username — shows a "Tip on Venmo" button/QR on /order |
 | `TIP_STRIPE_URL`                  | no       | A Stripe Payment Link URL — shows a "Tip with card" button/QR |
 | `TIP_CRYPTO_ADDRESS`              | no       | Wallet address — shows a tip QR + copyable address (`TIP_CRYPTO_LABEL`, `TIP_CRYPTO_URI` optional) |
@@ -165,7 +171,9 @@ Updates live; no refresh. Tap **⛶** for full-screen
 
 **Order (`/order`)** — visitors enter a name, pick an item from the menu, and
 watch the live queue with their own orders highlighted (their phone buzzes when
-it's ready). No account is required. Admin still serves/advances from `/admin`.
+it's ready). No account is required. Public ordering is available only while the
+bar is Brewing, Ready, or Beans Low; the API also enforces menu availability,
+rate limits, and a 50-order queue cap. Admin still serves/advances from `/admin`.
 If any `TIP_*` var is set, a **Tip the barista**
 section appears with buttons + QR codes (Venmo / Stripe link / crypto) — these
 are handoff links only; no money flows through the app.

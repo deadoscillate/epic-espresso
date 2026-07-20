@@ -64,6 +64,7 @@ let managerNoteTouched = false;
 let scheduleTouched = false;
 let busy = false;
 let unlocked = false;
+let connectionOnline = false;
 let needsPin = false;
 let modeHandled = false;
 let pin = sessionStorage.getItem(PIN_KEY) || null;
@@ -121,7 +122,7 @@ els.currentThumb.addEventListener("error", () => {
 
 // --- Controls enable/disable ------------------------------------------------
 function updateControls() {
-  const enabled = unlocked && !busy;
+  const enabled = unlocked && connectionOnline && !busy;
   buttons.forEach((b) => (b.disabled = !enabled));
   managerButtons.forEach((b) => (b.disabled = !enabled));
   els.applyMessage.disabled = !enabled || !liveState;
@@ -136,6 +137,9 @@ function updateControls() {
   els.invStock.disabled = !enabled;
   els.invAddBtn.disabled = !enabled;
   els.invList.querySelectorAll("input, button").forEach((b) => (b.disabled = !enabled));
+  els.gateForm
+    .querySelectorAll("input, button")
+    .forEach((control) => (control.disabled = !connectionOnline || busy));
 }
 
 // --- Actions ----------------------------------------------------------------
@@ -624,8 +628,16 @@ function render(state) {
 
 // --- Wire up & go ------------------------------------------------------------
 store.onConnection((conn) => {
+  connectionOnline = conn.online;
   renderConnection(els.connection, conn);
-  if (modeHandled || conn.mode === "connecting") return;
+  updateControls();
+  if (modeHandled || conn.mode === "connecting") {
+    if (conn.online && els.gateError.textContent === "Reconnecting to the server…") {
+      els.gateError.textContent = "";
+      els.gateInput.focus();
+    }
+    return;
+  }
   modeHandled = true;
 
   if (conn.mode === "demo") {
@@ -640,7 +652,7 @@ store.onConnection((conn) => {
       .then((ok) => (ok ? unlock() : lock()))
       .catch(() => openGate("Couldn’t verify saved PIN — please re-enter it."));
   } else {
-    openGate();
+    openGate(conn.online ? undefined : "Reconnecting to the server…");
   }
 });
 store.onChange(render);
