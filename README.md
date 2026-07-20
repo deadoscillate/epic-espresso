@@ -5,16 +5,17 @@ Brendan Spurlock Memorial Espresso Bar").
 
 A lightweight, installable status sign. Staff set the current coffee status from
 a phone (the **Admin** app); a warehouse tablet or monitor shows it on the
-**Status board**. It runs entirely on **Vercel** — a static front-end plus one
-tiny serverless function backed by **Neon Postgres** — and installs on iOS and
+**Status board**. It runs entirely on **Vercel** — a static front-end plus a few
+small serverless functions backed by **Neon Postgres** — and installs on iOS and
 Android as a **PWA** (Add to Home Screen). No Firebase, no app stores, and
 **nothing to install or run on your own computer.**
 
-| Page         | URL        | Who                                                  |
-| ------------ | ---------- | ---------------------------------------------------- |
-| Status board | `/display` | Everyone — public, read-only, kiosk/phone            |
-| Admin        | `/admin`   | Staff only — **PIN-protected**, on a separate deploy |
-| Landing      | `/`        | Links + a live status chip                           |
+| Page         | URL        | Who                                       |
+| ------------ | ---------- | ----------------------------------------- |
+| Status board | `/display` | Everyone — public, read-only, kiosk/phone |
+| Order        | `/order`   | Everyone — enter a name and place an order |
+| Admin        | `/admin`   | Staff only — **PIN-protected**            |
+| Landing      | `/`        | Links + a live status chip                |
 
 Statuses: **Brewing · Ready · Empty · Cleaning · Closed · Beans Low · Maintenance**,
 each with its own icon, default message, and full-screen theme.
@@ -25,9 +26,6 @@ each with its own icon, default message, and full-screen theme.
 
 - [How it works](#how-it-works)
 - [Deploy on Vercel (no local tools)](#deploy-on-vercel-no-local-tools)
-  - [1. Status board (public)](#1-status-board-public-project)
-  - [2. Neon Postgres + admin PIN](#2-add-neon-postgres--the-admin-pin)
-  - [3. Admin (separate URL)](#3-admin-on-a-separate-url-second-project)
 - [Environment variables](#environment-variables)
 - [Install as an app (iOS / Android)](#install-as-an-app-ios--android)
 - [Using it](#using-it)
@@ -48,15 +46,15 @@ One tiny shared state object drives everything:
 ```
 
 - **Storage:** a single serverless function, `/api/status`, reads/writes that
-  object in **Neon** (serverless Postgres). `GET` is public; `POST` requires the admin
-  **PIN** and is rejected entirely on the public deployment.
+  object in **Neon** (serverless Postgres). Reads and new visitor orders are
+  public; status, manager, queue-management, and inventory writes require the
+  admin **PIN**.
 - **Live updates:** the board and admin **poll** `/api/status` every few seconds
   (Vercel has no built-in realtime push; polling is simple and reliable for a
   status sign). The service worker never caches the API, so reads stay live.
-- **Separation:** the front-end is one codebase deployed as **two Vercel
-  projects** that share the same Neon database. An `APP_ROLE` env var + a 6-line
-  Edge Middleware make the public project read-only and hide `/admin`, while the
-  admin project serves the PIN-gated panel. Two URLs, one repo, no duplication.
+- **One site:** landing, ordering, status board, and admin all run on one Vercel
+  project. `/admin` is reachable from the same domain, but its controls stay
+  locked until the server verifies the configured PIN.
 - **Fallback:** if the API isn't reachable (e.g. the database isn't set up yet), the app
   drops to a clearly-labelled **demo mode** (localStorage, single device).
 
@@ -70,83 +68,50 @@ never talks to the backend directly.
 Everything below is done in the **Vercel dashboard** and the **GitHub**
 website. You don't need Node, the Vercel CLI, or anything on your machine.
 
-### 1. Status board (public project)
-
 1. Push this repo to GitHub (already done if you're reading this there).
 2. [vercel.com](https://vercel.com) → **Add New → Project → Import Git
    Repository** → pick this repo (grant the Vercel GitHub app access).
 3. **Framework Preset: Other**, **Root Directory: `./`**. Leave Build & Output
    empty. **Deploy.** You now have `https://<project>.vercel.app`.
-
-### 2. Add Neon Postgres + the admin PIN
-
-1. In the project → **Storage → Create Database → Neon (Postgres)** from the
+4. In the project → **Storage → Create Database → Neon (Postgres)** from the
    Marketplace. Accept the **Free** plan and **Connect** it to this project.
    This injects `DATABASE_URL` automatically (the table is created on first
    use — no migration step).
-2. Project → **Settings → Environment Variables**, add:
+5. Project → **Settings → Environment Variables**, add:
    - `ADMIN_PIN` = your chosen passcode (e.g. `4827`)
-   - `APP_ROLE` = `public`  ← makes this deployment read-only and hides `/admin`
-3. **Redeploy** (Deployments → ⋯ → Redeploy) so the new settings take effect.
+6. **Redeploy** (Deployments → ⋯ → Redeploy) so the new settings take effect.
 
-The status board is now live. `/admin` here redirects to the board.
+The landing page, `/display`, `/order`, and PIN-gated `/admin` now share one URL.
+The project auto-deploys on every push to `main`.
 
-### 3. Admin on a separate URL (second project)
-
-1. **Add New → Project → Import** the **same repo** again. Name it e.g.
-   `epic-espresso-admin`. Framework **Other**, Root `./`. **Deploy.**
-2. **Storage:** connect the **same Neon database** you created in step 2 to this
-   project (Storage → Connect Database → pick the existing one). Sharing the
-   database is what keeps both URLs in sync.
-3. **Settings → Environment Variables:**
-   - `ADMIN_PIN` = the **same** passcode as the public project
-   - `APP_ROLE` = `admin`
-4. **Redeploy.** Your staff admin URL is `https://epic-espresso-admin.vercel.app`
-   → opens the PIN-gated control panel.
-
-> Want a single URL instead of two? Deploy just one project, set `ADMIN_PIN`,
-> and leave `APP_ROLE` unset. Then `/admin` is reachable on the same domain but
-> still locked behind the PIN.
-
-Both projects auto-deploy on every push to `main`.
+If you are migrating from the older two-project setup, keep the project/domain
+you want visitors to use, connect it to the existing Neon database, set
+`ADMIN_PIN`, and redeploy. The old `APP_ROLE`, `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `SESSION_SECRET` variables are no longer used and
+can be removed. Verify `/display`, `/order`, and `/admin` on that domain before
+retiring the second Vercel project.
 
 ---
 
 ## Environment variables
 
-| Variable                          | Where                | Purpose                                                  |
-| --------------------------------- | -------------------- | -------------------------------------------------------- |
-| `DATABASE_URL`                    | both projects        | Neon connection string (added automatically by Storage)  |
-| `ADMIN_PIN`                       | admin project (req.) | Passcode required to write. Set on public too if single-project |
-| `APP_ROLE`                        | both                 | `public` = read-only + admin hidden; `admin`/unset = full |
-| `AUTO_RESET_MINUTES`              | both (optional)      | Revert the status to Closed after this many idle minutes (default `30`; `0` = off). Ignored when scheduling is on |
-| `SCHEDULE_ENABLED`                | both (optional)      | Auto open/close by the clock — **on by default** (`false` disables). Supersedes `AUTO_RESET_MINUTES` |
-| `SCHEDULE_OPEN` / `SCHEDULE_CLOSE`| both (optional)      | Local open/close `HH:MM` (defaults `08:00` / `16:30`) |
-| `SCHEDULE_TZ`                     | both (optional)      | IANA timezone (default `America/Chicago`; handles DST automatically) |
-| `SCHEDULE_DAYS`                   | both (optional)      | Business days, e.g. `1-5` = Mon–Fri (default) |
-| `SCHEDULE_OPEN_STATUS`            | both (optional)      | Status set at opening (default `ready`) |
-| `GOOGLE_CLIENT_ID`                | public (ordering)    | Google OAuth client ID — enables visitor sign-in + self-serve orders |
-| `GOOGLE_CLIENT_SECRET`            | public (ordering)    | Google OAuth client secret |
-| `SESSION_SECRET`                  | public (ordering)    | Long random string used to sign session cookies |
-| `TIP_VENMO`                       | public (optional)    | Venmo username — shows a "Tip on Venmo" button/QR on /order |
-| `TIP_STRIPE_URL`                  | public (optional)    | A Stripe Payment Link URL — shows a "Tip with card" button/QR |
-| `TIP_CRYPTO_ADDRESS`              | public (optional)    | Wallet address — shows a tip QR + copyable address (`TIP_CRYPTO_LABEL`, `TIP_CRYPTO_URI` optional) |
+| Variable                          | Required | Purpose                                                  |
+| --------------------------------- | -------- | -------------------------------------------------------- |
+| `DATABASE_URL`                    | yes      | Neon connection string (added automatically by Storage)  |
+| `ADMIN_PIN`                       | yes      | Passcode required for all admin writes                   |
+| `AUTO_RESET_MINUTES`              | no       | Revert the status to Closed after this many idle minutes (default `30`; `0` = off). Ignored when scheduling is on |
+| `SCHEDULE_ENABLED`                | no       | Auto open/close by the clock — **on by default** (`false` disables). Supersedes `AUTO_RESET_MINUTES` |
+| `SCHEDULE_OPEN` / `SCHEDULE_CLOSE`| no       | Local open/close `HH:MM` (defaults `08:00` / `16:30`) |
+| `SCHEDULE_TZ`                     | no       | IANA timezone (default `America/Chicago`; handles DST automatically) |
+| `SCHEDULE_DAYS`                   | no       | Business days, e.g. `1-5` = Mon–Fri (default) |
+| `SCHEDULE_OPEN_STATUS`            | no       | Status set at opening (default `ready`) |
+| `TIP_VENMO`                       | no       | Venmo username — shows a "Tip on Venmo" button/QR on /order |
+| `TIP_STRIPE_URL`                  | no       | A Stripe Payment Link URL — shows a "Tip with card" button/QR |
+| `TIP_CRYPTO_ADDRESS`              | no       | Wallet address — shows a tip QR + copyable address (`TIP_CRYPTO_LABEL`, `TIP_CRYPTO_URI` optional) |
 
 `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` are also accepted. No secrets ever live
-in the repo. Visitor sign-in is **optional** — until the three Google vars are
-set the order page just says "sign-in isn't set up yet" and everything else works.
-
-### Turn on Google sign-in + ordering
-
-1. In **Google Cloud Console → APIs & Services → Credentials**, create an
-   **OAuth client ID** (type: *Web application*).
-2. Add an **Authorized redirect URI**: `https://<your-domain>/api/auth/callback`
-   (add one per domain you use — production and any preview/custom domains).
-3. Put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and a `SESSION_SECRET`
-   (any long random string) into the **public** project's env vars, then
-   redeploy. The same project must have `DATABASE_URL`.
-4. Visitors go to **/order**, sign in, and pick from the menu; their first name
-   shows on the board. The barista still serves/advances from **/admin** (PIN).
+in the repo. Visitor ordering requires no account: the visitor enters a display
+name, chooses an item, and the order appears in the shared queue.
 
 ---
 
@@ -158,9 +123,9 @@ It's a PWA, so it installs straight from the browser — no App Store / Play Sto
 - **Android (Chrome):** open the URL → menu **⋮** → **Install app** (or *Add to
   Home screen*).
 
-Installed apps get the Epic espresso icon, launch full-screen, and remember
-which one they are: the public URL installs as **Espresso** (opens the board),
-the admin URL installs as **Espresso Admin** (opens the PIN screen).
+Installed apps get the Epic espresso icon and launch full-screen. The public
+manifest opens the board; installing from `/admin` uses the separate **Espresso
+Admin** manifest and opens the PIN screen on the same domain.
 
 ---
 
@@ -192,10 +157,10 @@ the `SCHEDULE_*` vars, or set `SCHEDULE_ENABLED=false` to fall back to the idle
   on the menu are what visitors can order; stock is just for your tracking.
 - The **Currently live** card mirrors the board; failed saves show a clear error.
 
-**Order (`/order`)** — visitors sign in with Google, pick an item from the menu,
-and watch the live queue with their own orders highlighted (their phone buzzes
-when it's ready). Each person is capped at a few active orders. Admin still
-serves/advances from `/admin`. If any `TIP_*` var is set, a **Tip the barista**
+**Order (`/order`)** — visitors enter a name, pick an item from the menu, and
+watch the live queue with their own orders highlighted (their phone buzzes when
+it's ready). No account is required. Admin still serves/advances from `/admin`.
+If any `TIP_*` var is set, a **Tip the barista**
 section appears with buttons + QR codes (Venmo / Stripe link / crypto) — these
 are handoff links only; no money flows through the app.
 
@@ -223,13 +188,11 @@ red = reconnecting.
 │   ├── index.html          # Admin panel (/admin)
 │   └── manifest.webmanifest# PWA manifest for the admin app
 ├── display/index.html      # Status board (/display)
-├── order/index.html        # Self-serve ordering (/order) — Google sign-in
+├── order/index.html        # Account-free self-serve ordering (/order)
 ├── api/
 │   ├── status.js           # GET/POST shared state (status, manager, orders) in Neon
 │   ├── inventory.js        # GET/POST the menu + stock (admin PIN to write)
-│   └── auth/[action].js    # Google OAuth: login / callback / me / logout
-├── lib/session.js          # Signed httpOnly session-cookie helpers (server-only)
-├── middleware.js           # Edge: hides /admin on the public (APP_ROLE) deploy
+│   └── tip-config.js       # Public, environment-driven tip destinations
 ├── manifest.webmanifest    # PWA manifest for the public app
 ├── sw.js                   # Service worker (installable + offline shell)
 ├── assets/
@@ -238,7 +201,6 @@ red = reconnecting.
 │   │   ├── config.js       # API path + poll interval (no secrets)
 │   │   ├── statuses.js     # Status + order-state + manager catalogues
 │   │   ├── store.js        # Storage abstraction (live API | demo)
-│   │   ├── auth.js         # Client helper for /api/auth/*
 │   │   ├── util.js, pwa.js, install.js, landing.js, admin.js, display.js, order.js
 │   │   └── vendor/qrcode.js# Vendored QR generator (MIT) for the board QR
 │   └── img/                # icons + img/status/ (Epic Brew card art, WebP)

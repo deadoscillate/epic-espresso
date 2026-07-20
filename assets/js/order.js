@@ -1,23 +1,19 @@
 // -----------------------------------------------------------------------------
-// Self-serve order page — sign in with Google, pick from the menu, watch the queue
+// Self-serve order page — enter a name, pick from the menu, watch the queue
 // -----------------------------------------------------------------------------
+import "./pwa.js";
 import { createCoffeeStore } from "./store.js";
 import { getStatus, getOrderState } from "./statuses.js";
-import { getMe, logout } from "./auth.js";
 import { setupTips } from "./tips.js";
 import { renderConnection } from "./util.js";
 
-const MY_KEY = "ee:myorders";
+const MY_KEY = "ee:guestOrders";
+const NAME_KEY = "ee:orderName";
 const store = createCoffeeStore();
 
 const els = {
-  loading: document.getElementById("order-loading"),
   sub: document.getElementById("order-sub"),
-  unconfigured: document.getElementById("state-unconfigured"),
-  signedOut: document.getElementById("state-signedout"),
-  signedIn: document.getElementById("state-signedin"),
-  greeting: document.getElementById("user-greeting"),
-  logoutBtn: document.getElementById("logout-btn"),
+  name: document.getElementById("order-name"),
   barStatus: document.getElementById("bar-status"),
   menu: document.getElementById("menu"),
   menuEmpty: document.getElementById("menu-empty"),
@@ -82,10 +78,17 @@ async function loadMenu() {
 
 async function placeOrder(item, btn) {
   if (busy) return;
+  const name = els.name.value.trim();
+  if (!name) {
+    showToast("Enter your name before choosing an item.", "error");
+    els.name.focus();
+    return;
+  }
+  localStorage.setItem(NAME_KEY, name);
   busy = true;
   if (btn) btn.disabled = true;
   try {
-    const id = await store.addOrder({ item });
+    const id = await store.addOrder({ name, item });
     rememberOrder(id);
     showToast(`Ordered ${item}! You're in the queue.`, "ok");
   } catch (err) {
@@ -148,30 +151,13 @@ function renderQueue(state) {
 }
 
 async function start() {
-  setupTips(els.tips, els.tipMethods); // independent of sign-in
-  const info = await getMe();
-  els.loading.hidden = true;
-
-  if (!info.configured) {
-    els.unconfigured.hidden = false;
-    els.sub.textContent = "Ordering isn't available yet.";
-    return;
-  }
-  if (!info.user) {
-    els.signedOut.hidden = false;
-    els.sub.textContent = "Sign in to place your order.";
-    return;
-  }
-
-  els.signedIn.hidden = false;
-  const first = String(info.user.name || info.user.email || "there").split(/\s+/)[0];
-  els.greeting.textContent = `Hi, ${first}`;
-  els.sub.textContent = "Pick something from the menu.";
-  els.logoutBtn.addEventListener("click", async () => {
-    await logout();
-    location.reload();
+  setupTips(els.tips, els.tipMethods);
+  els.name.value = localStorage.getItem(NAME_KEY) || "";
+  els.name.addEventListener("change", () => {
+    const name = els.name.value.trim();
+    if (name) localStorage.setItem(NAME_KEY, name);
+    else localStorage.removeItem(NAME_KEY);
   });
-
   await loadMenu();
   store.onConnection((c) => renderConnection(els.connection, c));
   store.onChange(renderQueue);

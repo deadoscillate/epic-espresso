@@ -26,7 +26,7 @@ draft, not a contract.
 - Status board (`/display`), admin control panel (`/admin`), landing page (`/`)
 - 7 themed statuses with "Epic Brew" card art + emoji fallback
 - Vercel serverless API + **Neon Postgres** shared state, with localStorage demo fallback
-- **PIN-gated admin**, separate public/admin deploys via `APP_ROLE` + edge middleware
+- **PIN-gated admin** on the same site as the public status and order pages
 - Installable **PWA** (iOS/Android) with an in-page "Install app" button
 - Live connection indicator, last-updated time, custom message banner
 - Espresso-cup app icon + Epic navy/gold theme
@@ -36,8 +36,7 @@ draft, not a contract.
 - Auto-reset — stale status reverts to Closed after ~30 min idle (configurable)
 - Scheduled open/close — auto Closed outside business hours, opens in the morning (default 08:00–16:30 Central, Mon–Fri; DST-aware)
 - Scan-to-open QR code in the board corner
-- Google sign-in (OAuth) + visitor accounts (admin stays on the PIN)
-- Self-serve ordering — signed-in visitors order from the menu; per-person cap
+- Account-free self-serve ordering — visitors enter a name and choose from the menu
 - Inventory — admin-managed menu (orderable items) + back-office stock counts
 - Tipping — Venmo / Stripe link / crypto handoff buttons + QR on the order page (env-configured)
 
