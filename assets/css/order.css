@@ -40,12 +40,7 @@
   margin-top: 0.3rem;
 }
 
-.order__loading {
-  color: var(--text-dim);
-}
-.order__loading[hidden],
-.order__panel[hidden],
-#state-signedin[hidden] {
+.order__panel[hidden] {
   display: none;
 }
 
@@ -56,23 +51,31 @@
   background: var(--surface);
   box-shadow: var(--shadow);
 }
-.order__panel p {
-  margin: 0 0 1rem;
-}
-.order__panel .install-btn {
-  text-decoration: none;
-}
-
-.order__user {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding-bottom: 1rem;
+.guest-order label {
+  display: block;
+  margin-bottom: 0.45rem;
   font-weight: 700;
 }
+.guest-order__name {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+}
+.guest-order__name:focus {
+  border-color: var(--accent);
+  outline: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.guest-order p {
+  margin: 0.6rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
 .order__status {
-  margin: 0 0 1rem;
+  margin: 1rem 0;
   color: var(--text-dim);
   font-weight: 600;
 }

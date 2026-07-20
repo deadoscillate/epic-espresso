@@ -75,10 +75,6 @@ const clampStock = (n) => Math.max(0, Math.min(100000, Math.round(Number(n) || 0
 
 // Exported for testing; `db` is the Neon tagged-template `sql` function.
 export async function handle(req, res, db) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "content-type");
-
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
     return res.end();
@@ -96,7 +92,6 @@ export async function handle(req, res, db) {
   }
 
   if (req.method === "POST") {
-    if ((process.env.APP_ROLE || "all") === "public") return send(res, 403, { error: "read_only" });
     const adminPin = process.env.ADMIN_PIN;
     if (!adminPin) return send(res, 503, { error: "pin_not_configured" });
 

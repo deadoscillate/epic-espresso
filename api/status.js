@@ -2,18 +2,17 @@
 // /api/status — the shared state, backed by Neon (serverless Postgres)
 // -----------------------------------------------------------------------------
 //   GET  -> { status, message, updatedAt, manager: {…}, orders: [{ id, name, state, … }] }
-//   POST -> updates the state; requires the admin PIN. Partial:
+//   POST -> creates guest orders or performs PIN-protected admin updates. Partial:
 //             { status, message, pin }            -> coffee status
 //             { manager: { state, note }, pin }   -> manager (Joe) presence
-//             { order: { action, item, … } }      -> order queue; a signed-in visitor
-//                                                    may "add" (no PIN), the rest is admin
+//             { order: { action, name, item, … } } -> order queue; a visitor may
+//                                                     "add" (no PIN), the rest is admin
 //             { pin, verify: true }               -> PIN check only
 //
 // State lives in a single-row table `coffee_state` (created/upgraded on demand,
 // so there's no migration step). Configured via Vercel env vars:
 //   DATABASE_URL  -> Neon connection string (POSTGRES_URL also accepted)
 //   ADMIN_PIN     -> passcode required to write
-//   APP_ROLE      -> "public" makes this deployment read-only (hides admin)
 //   AUTO_RESET_MINUTES -> revert to Closed after N min idle (default 30; 0 = off)
 //   SCHEDULE_ENABLED   -> auto open/close by the clock (default on; "false" disables)
 //   SCHEDULE_OPEN/CLOSE-> "HH:MM" local time (defaults 08:00 / 16:30)
@@ -24,12 +23,10 @@
 // -----------------------------------------------------------------------------
 
 import { neon } from "@neondatabase/serverless";
-import { getSession } from "../lib/session.js";
 
 const MESSAGE_MAX = 280;
 const NOTE_MAX = 120;
 const NAME_MAX = 40;
-const MAX_USER_ORDERS = 3; // active orders a single signed-in visitor may hold
 const STATUSES = ["brewing", "ready", "empty", "cleaning", "closed", "beans_low", "maintenance"];
 const MANAGER_STATES = ["available", "meeting", "heads_down", "out"];
 const ORDER_FLOW = ["queued", "making", "ready"]; // advancing past "ready" serves (removes) it
@@ -148,9 +145,8 @@ async function ensureTable(db) {
     created_at bigint,
     updated_at bigint
   )`;
-  // Added later (self-serve ordering): the chosen menu item + who placed it.
+  // Added later (self-serve ordering): the chosen menu item.
   await db`ALTER TABLE coffee_orders ADD COLUMN IF NOT EXISTS item text`;
-  await db`ALTER TABLE coffee_orders ADD COLUMN IF NOT EXISTS user_id text`;
   tableReady = true;
 }
 
@@ -230,19 +226,13 @@ async function writeManager(db, state, note) {
                  manager_updated_at = EXCLUDED.manager_updated_at`;
 }
 
-async function addOrder(db, name, item, userId) {
+async function addOrder(db, name, item) {
   await ensureTable(db);
   const now = Date.now();
-  const rows = await db`INSERT INTO coffee_orders (name, item, user_id, state, created_at, updated_at)
-           VALUES (${name}, ${item || ""}, ${userId || null}, 'queued', ${now}, ${now})
+  const rows = await db`INSERT INTO coffee_orders (name, item, state, created_at, updated_at)
+           VALUES (${name}, ${item || ""}, 'queued', ${now}, ${now})
            RETURNING id`;
   return rows.length ? Number(rows[0].id) : null;
-}
-
-// How many active orders a given visitor already has (for a light spam cap).
-async function countUserOrders(db, userId) {
-  const rows = await db`SELECT count(*)::int AS n FROM coffee_orders WHERE user_id = ${userId}`;
-  return rows.length ? Number(rows[0].n) : 0;
 }
 
 // A visitor may only order something on the menu. If no items are marked
@@ -260,8 +250,6 @@ async function orderableItem(db, raw) {
   const match = available.find((r) => r.name.toLowerCase() === item.toLowerCase());
   return match ? match.name : null;
 }
-
-const firstName = (full) => String(full || "").trim().split(/\s+/)[0] || "";
 
 async function advanceOrder(db, id) {
   await ensureTable(db);
@@ -311,9 +299,6 @@ function pinMatches(a, b) {
 
 // Exported for testing; `db` is the Neon tagged-template `sql` function.
 export async function handle(req, res, db) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "content-type");
   res.setHeader("Cache-Control", "no-store");
 
   if (req.method === "OPTIONS") {
@@ -336,7 +321,6 @@ export async function handle(req, res, db) {
   }
 
   if (req.method === "POST") {
-    const session = getSession(req);
     const adminPin = process.env.ADMIN_PIN;
 
     let body = {};
@@ -345,20 +329,19 @@ export async function handle(req, res, db) {
     } catch {
       return send(res, 400, { error: "bad_json" });
     }
-    const pinOk = Boolean(adminPin) && pinMatches(String(body.pin || ""), adminPin);
+    const submittedPin = typeof body.pin === "string" ? body.pin : "";
+    const pinProvided = submittedPin.length > 0;
+    const pinOk = Boolean(adminPin) && pinMatches(submittedPin, adminPin);
 
-    // Self-serve order placement by a signed-in visitor — no PIN, and allowed even
-    // on the public (read-only) deploy. The name comes from their Google account.
-    if (body.order && body.order.action === "add" && session && !pinOk) {
+    // Self-serve order placement — no account or PIN. Supplying a PIN opts into
+    // the admin path below, so a stale/incorrect admin PIN still fails closed.
+    if (body.order && body.order.action === "add" && !pinProvided) {
       try {
+        const name = String(body.order.name || "").trim().slice(0, NAME_MAX);
+        if (!name) return send(res, 400, { error: "bad_order" });
         const item = await orderableItem(db, body.order.item);
         if (!item) return send(res, 400, { error: "bad_item" });
-        if ((await countUserOrders(db, session.uid)) >= MAX_USER_ORDERS) {
-          return send(res, 429, { error: "too_many_orders" });
-        }
-        const emailName = session.email ? String(session.email).split("@")[0] : "";
-        const name = firstName(session.name) || emailName || "Guest";
-        const id = await addOrder(db, name, item, session.uid);
+        const id = await addOrder(db, name, item);
         const state = await readState(db);
         state.createdOrderId = id;
         return send(res, 200, state);
@@ -368,10 +351,7 @@ export async function handle(req, res, db) {
       }
     }
 
-    // Everything else is an admin action (still the shared PIN).
-    if ((process.env.APP_ROLE || "all") === "public") {
-      return send(res, 403, { error: "read_only" });
-    }
+    // Everything else is an admin action protected by the shared PIN.
     if (!adminPin) return send(res, 503, { error: "pin_not_configured" });
     if (!pinOk) return send(res, 401, { error: "bad_pin" });
     if (body.verify) return send(res, 200, { ok: true });
@@ -383,7 +363,7 @@ export async function handle(req, res, db) {
           const name = String(o.name || "").trim().slice(0, NAME_MAX);
           if (!name) return send(res, 400, { error: "bad_order" });
           const item = String(o.item || "").trim().slice(0, NAME_MAX);
-          await addOrder(db, name, item, null);
+          await addOrder(db, name, item);
         } else if (o.action === "advance") {
           const id = Number(o.id);
           if (!Number.isFinite(id)) return send(res, 400, { error: "bad_order" });

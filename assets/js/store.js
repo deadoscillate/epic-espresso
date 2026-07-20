@@ -9,7 +9,7 @@
 //   await store.verifyPin(pin);          // admin gate -> boolean
 //   await store.setStatus({ status, message, pin });
 //   await store.setManager({ state, note, pin });   // "Joe is in a meeting"
-//   await store.addOrder({ name, pin });            // order queue
+//   await store.addOrder({ name, item });           // guest order creation
 //   await store.advanceOrder({ id, pin });          // Queued → Making → Ready → served
 //   await store.removeOrder({ id, pin });
 //   await store.init();
@@ -188,10 +188,6 @@ export function createCoffeeStore() {
         throw new StoreError("Network error — try again.", "network");
       }
       if (res.status === 401) throw new StoreError("Incorrect PIN.", "bad_pin");
-      if (res.status === 403) throw new StoreError("This site is read-only.", "read_only");
-      if (res.status === 429) {
-        throw new StoreError("You already have a few orders in the queue.", "too_many_orders");
-      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         const code = body.error || `http_${res.status}`;
@@ -283,8 +279,8 @@ export function createCoffeeStore() {
       await applyWrite({ manager: { state: mState, note: String(note).trim().slice(0, NOTE_MAX) }, pin });
     },
 
-    // name + pin = admin add; item only (cookie auth) = self-serve. Returns the
-    // new order's id when the backend provides it.
+    // name + item without a PIN = guest order; name + PIN = admin add. Returns
+    // the new order's id when the backend provides it.
     async addOrder({ name, item, pin } = {}) {
       const payload = { action: "add" };
       if (name != null) payload.name = String(name).trim().slice(0, NAME_MAX);

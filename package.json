@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Coffee status board for the Epic Espresso Bar (Vercel + Neon Postgres, PWA).",
   "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/analytics": "^2.0.1"
