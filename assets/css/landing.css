@@ -72,6 +72,9 @@
 .joe-chip[hidden] {
   display: none;
 }
+.landing__connection {
+  margin: -1.4rem 0 2rem;
+}
 
 /* Navigation cards --------------------------------------------------------- */
 .nav-cards {

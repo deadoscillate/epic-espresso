@@ -6,6 +6,7 @@ import { createCoffeeStore } from "./store.js";
 import { getStatus, getOrderState } from "./statuses.js";
 import { setupTips } from "./tips.js";
 import { renderConnection } from "./util.js";
+import { ORDERABLE_STATUSES } from "../../shared/constants.js";
 
 const MY_KEY = "ee:guestOrders";
 const NAME_KEY = "ee:orderName";
@@ -27,7 +28,10 @@ const els = {
 };
 
 let busy = false;
+let connectionOnline = false;
+let currentBarStatus = "closed";
 const readySeen = new Set();
+const DEFAULT_SUB = "Enter your name, then pick something from the menu.";
 
 const myIds = () => {
   try {
@@ -71,13 +75,35 @@ async function loadMenu() {
     btn.type = "button";
     btn.className = "menu-item";
     btn.textContent = it.name;
-    btn.addEventListener("click", () => placeOrder(it.name, btn));
+    btn.addEventListener("click", () => placeOrder(it.name));
     els.menu.appendChild(btn);
+  }
+  updateOrderControls();
+}
+
+function updateOrderControls() {
+  const statusAllowsOrders = ORDERABLE_STATUSES.includes(currentBarStatus);
+  const canOrder = connectionOnline && statusAllowsOrders && !busy;
+  els.menu.querySelectorAll("button").forEach((button) => (button.disabled = !canOrder));
+  if (!connectionOnline) {
+    els.sub.textContent = "Reconnecting — ordering is temporarily unavailable.";
+  } else if (!statusAllowsOrders) {
+    els.sub.textContent = "The espresso bar isn’t accepting orders in its current status.";
+  } else {
+    els.sub.textContent = DEFAULT_SUB;
   }
 }
 
-async function placeOrder(item, btn) {
+async function placeOrder(item) {
   if (busy) return;
+  if (!connectionOnline) {
+    showToast("Still reconnecting — please wait a moment.", "error");
+    return;
+  }
+  if (!ORDERABLE_STATUSES.includes(currentBarStatus)) {
+    showToast("The espresso bar isn’t accepting orders right now.", "error");
+    return;
+  }
   const name = els.name.value.trim();
   if (!name) {
     showToast("Enter your name before choosing an item.", "error");
@@ -86,7 +112,7 @@ async function placeOrder(item, btn) {
   }
   localStorage.setItem(NAME_KEY, name);
   busy = true;
-  if (btn) btn.disabled = true;
+  updateOrderControls();
   try {
     const id = await store.addOrder({ name, item });
     rememberOrder(id);
@@ -95,14 +121,17 @@ async function placeOrder(item, btn) {
     showToast(err.message || "Couldn't place your order.", "error");
   } finally {
     busy = false;
-    if (btn) btn.disabled = false;
+    updateOrderControls();
   }
 }
 
 function renderQueue(state) {
   const status = getStatus(state.status);
+  currentBarStatus = status.id;
   document.body.dataset.status = status.id;
-  els.barStatus.textContent = `Bar status: ${status.icon} ${status.label}`;
+  const availability = ORDERABLE_STATUSES.includes(status.id) ? "" : " · Ordering unavailable";
+  els.barStatus.textContent = `Bar status: ${status.icon} ${status.label}${availability}`;
+  updateOrderControls();
 
   const orders = Array.isArray(state.orders) ? state.orders : [];
   const present = new Set(orders.map((o) => o.id));
@@ -159,7 +188,11 @@ async function start() {
     else localStorage.removeItem(NAME_KEY);
   });
   await loadMenu();
-  store.onConnection((c) => renderConnection(els.connection, c));
+  store.onConnection((c) => {
+    connectionOnline = c.online;
+    renderConnection(els.connection, c);
+    updateOrderControls();
+  });
   store.onChange(renderQueue);
   store.init();
 }

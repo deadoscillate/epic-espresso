@@ -12,8 +12,17 @@
 // -----------------------------------------------------------------------------
 
 import { neon } from "@neondatabase/serverless";
-
-const NAME_MAX = 60;
+import { ITEM_NAME_MAX } from "../shared/constants.js";
+import {
+  clearRateLimit,
+  inspectRateLimit,
+  PIN_RATE_LIMIT,
+  pinMatches,
+  rateLimitKey,
+  readJsonBody,
+  recordRateLimitAttempt,
+  sendRateLimited,
+} from "../lib/server-security.js";
 
 const DB_URL =
   process.env.DATABASE_URL ||
@@ -55,22 +64,6 @@ function send(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-function readBody(req) {
-  return new Promise((resolve) => {
-    let data = "";
-    req.on("data", (c) => (data += c));
-    req.on("end", () => resolve(data));
-    req.on("error", () => resolve(""));
-  });
-}
-
-function pinMatches(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 const clampStock = (n) => Math.max(0, Math.min(100000, Math.round(Number(n) || 0)));
 
 // Exported for testing; `db` is the Neon tagged-template `sql` function.
@@ -97,17 +90,28 @@ export async function handle(req, res, db) {
 
     let body = {};
     try {
-      body = JSON.parse((await readBody(req)) || "{}");
-    } catch {
-      return send(res, 400, { error: "bad_json" });
+      body = await readJsonBody(req);
+    } catch (err) {
+      return send(res, err.code === "body_too_large" ? 413 : 400, {
+        error: err.code === "body_too_large" ? "body_too_large" : "bad_json",
+      });
     }
-    if (!pinMatches(String(body.pin || ""), adminPin)) return send(res, 401, { error: "bad_pin" });
+    const submittedPin = String(body.pin || "");
+    const pinRateKey = rateLimitKey(req, "admin-pin");
+    const pinLimit = await inspectRateLimit(db, pinRateKey, PIN_RATE_LIMIT);
+    if (pinLimit.limited) return sendRateLimited(res, pinLimit.retryAfter);
+    if (!pinMatches(submittedPin, adminPin)) {
+      const failedPinLimit = await recordRateLimitAttempt(db, pinRateKey, PIN_RATE_LIMIT);
+      if (failedPinLimit.limited) return sendRateLimited(res, failedPinLimit.retryAfter);
+      return send(res, 401, { error: "bad_pin" });
+    }
+    await clearRateLimit(db, pinRateKey);
 
     try {
       await ensureTable(db);
       const now = Date.now();
       if (body.action === "add") {
-        const name = String(body.name || "").trim().slice(0, NAME_MAX);
+        const name = String(body.name || "").trim().slice(0, ITEM_NAME_MAX);
         if (!name) return send(res, 400, { error: "bad_item" });
         const available = body.available !== false;
         const stock = clampStock(body.stock);
@@ -116,7 +120,7 @@ export async function handle(req, res, db) {
       } else if (body.action === "update") {
         const id = Number(body.id);
         if (!Number.isFinite(id)) return send(res, 400, { error: "bad_item" });
-        const name = body.name == null ? null : String(body.name).trim().slice(0, NAME_MAX);
+        const name = body.name == null ? null : String(body.name).trim().slice(0, ITEM_NAME_MAX);
         const available = body.available == null ? null : body.available !== false;
         const stock = body.stock == null ? null : clampStock(body.stock);
         await db`UPDATE inventory SET

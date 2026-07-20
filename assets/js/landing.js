@@ -5,6 +5,7 @@ import "./pwa.js";
 import { setupInstallButton } from "./install.js";
 import { createCoffeeStore } from "./store.js";
 import { getStatus, getManager } from "./statuses.js";
+import { renderConnection } from "./util.js";
 
 const store = createCoffeeStore();
 const chip = document.getElementById("live-chip");
@@ -33,4 +34,5 @@ setupInstallButton(
   document.getElementById("install-btn"),
   document.getElementById("install-hint")
 );
+store.onConnection((conn) => renderConnection(document.getElementById("connection"), conn));
 store.init();

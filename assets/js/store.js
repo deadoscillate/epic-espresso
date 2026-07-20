@@ -15,19 +15,20 @@
 //   await store.removeOrder({ id, pin });
 //   await store.init();
 //
-// Backend is chosen automatically at init():
+// Backend is chosen at init():
 //   • "live"  — polls /api/status (Neon Postgres) and POSTs partial updates.
-//   • "demo"  — localStorage fallback when the API is unavailable (single
-//               device; syncs across tabs). Clearly labelled in the UI.
+//   • "demo"  — explicit localhost / ?demo=1 localStorage mode (single device;
+//               syncs across tabs). Production outages remain read-only and retry.
 // -----------------------------------------------------------------------------
 
 import { API_PATH, POLL_INTERVAL_MS } from "./config.js";
 import { STATUSES, DEFAULT_STATUS_ID, ORDER_FLOW } from "./statuses.js";
+import { CUSTOMER_NAME_MAX, ITEM_NAME_MAX } from "../../shared/constants.js";
 
 const DEMO_KEY = "bsmeb:state";
+const LAST_LIVE_KEY = "bsmeb:lastLiveState";
 const MESSAGE_MAX = 280;
 const NOTE_MAX = 120;
-const NAME_MAX = 40;
 const DEFAULT_MANAGER = { state: "available", note: "", updatedAt: null };
 const DEFAULT_SCHEDULE = {
   enabled: true,
@@ -69,8 +70,8 @@ function sanitizeOrders(arr) {
     .filter((o) => o && typeof o === "object" && o.id != null)
     .map((o) => ({
       id: o.id,
-      name: typeof o.name === "string" ? o.name.slice(0, NAME_MAX) : "",
-      item: typeof o.item === "string" ? o.item.slice(0, NAME_MAX) : "",
+      name: typeof o.name === "string" ? o.name.slice(0, CUSTOMER_NAME_MAX) : "",
+      item: typeof o.item === "string" ? o.item.slice(0, ITEM_NAME_MAX) : "",
       state: ORDER_FLOW.includes(o.state) ? o.state : "queued",
       createdAt: typeof o.createdAt === "number" ? o.createdAt : null,
       updatedAt: typeof o.updatedAt === "number" ? o.updatedAt : null,
@@ -206,28 +207,46 @@ export function createCoffeeStore() {
     emitChange();
   }
 
-  // --- Backend: live API (polling) ----------------------------------------
-  function startApi() {
-    setConnection({ mode: "live", online: true, label: "Live" });
+  function setLiveState(next) {
+    setState(next);
+    try {
+      localStorage.setItem(LAST_LIVE_KEY, JSON.stringify(sanitize(next)));
+    } catch {
+      /* storage can be unavailable in private browsing; live state still works */
+    }
+  }
 
+  function loadLastLiveState() {
+    try {
+      const raw = localStorage.getItem(LAST_LIVE_KEY);
+      setState(raw ? JSON.parse(raw) : DEFAULT_STATE);
+    } catch {
+      setState(DEFAULT_STATE);
+    }
+  }
+
+  function demoRequested() {
+    const localHost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    return localHost || new URLSearchParams(location.search).get("demo") === "1";
+  }
+
+  // --- Backend: live API (polling) ----------------------------------------
+  function startApi(initiallyOnline = true) {
     async function poll() {
       try {
         const res = await fetch(API_PATH, { cache: "no-store" });
         if (!res.ok) throw new Error(`status ${res.status}`);
-        setState(await res.json());
+        setLiveState(await res.json());
         if (!connection.online) setConnection({ online: true, label: "Live" });
       } catch {
         if (connection.online) setConnection({ online: false, label: "Reconnecting…" });
       }
     }
 
-    poll();
-    setInterval(poll, POLL_INTERVAL_MS);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") poll();
-    });
-
     applyWrite = async (payload) => {
+      if (!connection.online) {
+        throw new StoreError("Reconnecting — changes are temporarily disabled.", "offline");
+      }
       let res;
       try {
         res = await fetch(API_PATH, {
@@ -236,30 +255,61 @@ export function createCoffeeStore() {
           body: JSON.stringify(payload),
         });
       } catch {
+        setConnection({ online: false, label: "Reconnecting…" });
         throw new StoreError("Network error — try again.", "network");
       }
       if (res.status === 401) throw new StoreError("Incorrect PIN.", "bad_pin");
       if (!res.ok) {
+        if (res.status >= 500) setConnection({ online: false, label: "Reconnecting…" });
         const body = await res.json().catch(() => ({}));
         const code = body.error || `http_${res.status}`;
-        const msg = code === "bad_item" ? "That item isn’t on the menu right now." : "Couldn’t save — please try again.";
+        const messages = {
+          bad_item: "That item isn’t on the menu right now.",
+          bar_unavailable: "The espresso bar isn’t accepting orders right now.",
+          queue_full: "The order queue is full — please check with the barista.",
+          rate_limited: "Too many attempts — please wait a few minutes.",
+          body_too_large: "That request is too large.",
+        };
+        const msg = messages[code] || "Couldn’t save — please try again.";
         throw new StoreError(msg, code);
       }
       const json = await res.json();
-      setState(json);
+      setLiveState(json);
       return json;
     };
 
     verifyImpl = async (pin) => {
-      const res = await fetch(API_PATH, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin, verify: true }),
-      });
+      if (!connection.online) throw new StoreError("Still reconnecting.", "offline");
+      let res;
+      try {
+        res = await fetch(API_PATH, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin, verify: true }),
+        });
+      } catch {
+        setConnection({ online: false, label: "Reconnecting…" });
+        throw new StoreError("Couldn’t reach the server.", "verify_failed");
+      }
       if (res.ok) return true;
       if (res.status === 401) return false;
+      if (res.status === 429) throw new StoreError("Too many PIN attempts — try again later.", "rate_limited");
+      if (res.status >= 500) setConnection({ online: false, label: "Reconnecting…" });
       throw new StoreError("Couldn’t reach the server.", "verify_failed");
     };
+
+    // Publish the connection state only after the live write/PIN handlers are
+    // installed; connection listeners may immediately try to verify a saved PIN.
+    setConnection({
+      mode: "live",
+      online: initiallyOnline,
+      label: initiallyOnline ? "Live" : "Reconnecting…",
+    });
+    if (!initiallyOnline) poll();
+    setInterval(poll, POLL_INTERVAL_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") poll();
+    });
   }
 
   // --- Backend: localStorage demo -----------------------------------------
@@ -343,8 +393,8 @@ export function createCoffeeStore() {
     // the new order's id when the backend provides it.
     async addOrder({ name, item, pin } = {}) {
       const payload = { action: "add" };
-      if (name != null) payload.name = String(name).trim().slice(0, NAME_MAX);
-      if (item != null) payload.item = String(item).trim().slice(0, NAME_MAX);
+      if (name != null) payload.name = String(name).trim().slice(0, CUSTOMER_NAME_MAX);
+      if (item != null) payload.item = String(item).trim().slice(0, ITEM_NAME_MAX);
       const res = await applyWrite({ order: payload, pin });
       return res && res.createdOrderId != null ? res.createdOrderId : null;
     },
@@ -365,13 +415,18 @@ export function createCoffeeStore() {
       try {
         const res = await fetch(API_PATH, { cache: "no-store" });
         if (res.ok) {
-          setState(await res.json());
-          startApi();
+          setLiveState(await res.json());
+          startApi(true);
           return;
         }
-        throw new Error(`api ${res.status}`); // 503 (no database) etc. -> demo
+        throw new Error(`api ${res.status}`);
       } catch {
-        startDemo();
+        if (demoRequested()) {
+          startDemo();
+        } else {
+          loadLastLiveState();
+          startApi(false);
+        }
       }
     },
   };

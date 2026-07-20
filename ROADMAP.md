@@ -37,6 +37,8 @@ draft, not a contract.
 - Admin-editable scheduled open/close — auto Closed outside business hours, opens in the morning (default 08:00–16:30 Central, Mon–Fri; DST-aware)
 - Scan-to-open QR code in the board corner
 - Account-free self-serve ordering — visitors enter a name and choose from the menu
+- Ordering guardrails — closed-state enforcement, strict menu validation, queue cap, request-size limits, and IP-based order/PIN throttling
+- Read-only reconnecting mode during API outages (explicit demo mode remains available locally)
 - Inventory — admin-managed menu (orderable items) + back-office stock counts
 - Tipping — Venmo / Stripe link / crypto handoff buttons + QR on the order page (env-configured)
 
