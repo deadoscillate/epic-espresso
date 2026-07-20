@@ -97,6 +97,70 @@
         </div>
       </section>
 
+      <!-- Automatic opening and closing schedule -->
+      <h2 class="section-label">Hours of operation</h2>
+      <section class="schedule">
+        <form id="schedule-form">
+          <label class="schedule__toggle">
+            <input id="schedule-enabled" type="checkbox" />
+            <span>Automatically open and close the status board</span>
+          </label>
+
+          <div class="schedule__grid">
+            <label>
+              Opens
+              <input id="schedule-open" type="time" required />
+            </label>
+            <label>
+              Closes
+              <input id="schedule-close" type="time" required />
+            </label>
+            <label>
+              Time zone
+              <input
+                id="schedule-tz"
+                list="schedule-timezones"
+                maxlength="64"
+                autocomplete="off"
+                required
+              />
+            </label>
+            <label>
+              Opening status
+              <select id="schedule-open-status" required></select>
+            </label>
+          </div>
+
+          <datalist id="schedule-timezones">
+            <option value="America/Chicago"></option>
+            <option value="America/New_York"></option>
+            <option value="America/Denver"></option>
+            <option value="America/Los_Angeles"></option>
+            <option value="America/Phoenix"></option>
+          </datalist>
+
+          <fieldset class="schedule__days">
+            <legend>Open days</legend>
+            <label><input type="checkbox" name="schedule-day" value="0" /> Sun</label>
+            <label><input type="checkbox" name="schedule-day" value="1" /> Mon</label>
+            <label><input type="checkbox" name="schedule-day" value="2" /> Tue</label>
+            <label><input type="checkbox" name="schedule-day" value="3" /> Wed</label>
+            <label><input type="checkbox" name="schedule-day" value="4" /> Thu</label>
+            <label><input type="checkbox" name="schedule-day" value="5" /> Fri</label>
+            <label><input type="checkbox" name="schedule-day" value="6" /> Sat</label>
+          </fieldset>
+
+          <div class="schedule__footer">
+            <p id="schedule-summary">—</p>
+            <button type="submit" class="btn btn-primary" id="schedule-save">Save hours</button>
+          </div>
+          <p class="schedule__hint">
+            Times use the selected local time zone and adjust for daylight saving time.
+            Opening time must be before closing time.
+          </p>
+        </form>
+      </section>
+
       <!-- Manager presence (Joe) -->
       <h2 class="section-label">Manager — Joe</h2>
       <section class="manager">

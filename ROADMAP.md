@@ -34,7 +34,7 @@ draft, not a contract.
 - Manager status — "Joe is in a meeting" (manual toggle + optional note)
 - Order tracker — name-only queue (Queued → Making → Ready) on the board, with a "your order is ready" flash + chime
 - Auto-reset — stale status reverts to Closed after ~30 min idle (configurable)
-- Scheduled open/close — auto Closed outside business hours, opens in the morning (default 08:00–16:30 Central, Mon–Fri; DST-aware)
+- Admin-editable scheduled open/close — auto Closed outside business hours, opens in the morning (default 08:00–16:30 Central, Mon–Fri; DST-aware)
 - Scan-to-open QR code in the board corner
 - Account-free self-serve ordering — visitors enter a name and choose from the menu
 - Inventory — admin-managed menu (orderable items) + back-office stock counts

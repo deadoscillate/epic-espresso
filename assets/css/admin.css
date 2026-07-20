@@ -450,6 +450,7 @@
 /* Custom message field ----------------------------------------------------- */
 .message-field {
   padding: 1.1rem 1.25rem;
+  margin-bottom: 2rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -489,6 +490,106 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Hours of operation ------------------------------------------------------- */
+.schedule {
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.schedule__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 700;
+}
+.schedule__toggle input,
+.schedule__days input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--epic-gold);
+}
+.schedule__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+.schedule__grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.schedule__grid input,
+.schedule__grid select {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.schedule__grid input:focus,
+.schedule__grid select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.schedule__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  border: 0;
+}
+.schedule__days legend {
+  margin-bottom: 0.55rem;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.schedule__days label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.35rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.schedule__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.schedule__footer p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.schedule__footer .btn {
+  flex-shrink: 0;
+}
+.schedule__hint {
+  margin: 0.65rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+.schedule :disabled {
+  opacity: 0.55;
+}
+
 /* Toast -------------------------------------------------------------------- */
 .toast {
   position: fixed;
@@ -523,6 +624,16 @@
   }
   .status-btn {
     min-height: 104px;
+  }
+  .schedule__grid {
+    grid-template-columns: 1fr;
+  }
+  .schedule__days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .schedule__footer {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

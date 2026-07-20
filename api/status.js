@@ -1,10 +1,12 @@
 // -----------------------------------------------------------------------------
 // /api/status — the shared state, backed by Neon (serverless Postgres)
 // -----------------------------------------------------------------------------
-//   GET  -> { status, message, updatedAt, manager: {…}, orders: [{ id, name, state, … }] }
+//   GET  -> { status, message, updatedAt, manager: {…}, schedule: {…}, orders: […] }
 //   POST -> creates guest orders or performs PIN-protected admin updates. Partial:
 //             { status, message, pin }            -> coffee status
 //             { manager: { state, note }, pin }   -> manager (Joe) presence
+//             { schedule: { enabled, open, close, tz, days, openStatus }, pin }
+//                                                   -> operating hours
 //             { order: { action, name, item, … } } -> order queue; a visitor may
 //                                                     "add" (no PIN), the rest is admin
 //             { pin, verify: true }               -> PIN check only
@@ -14,11 +16,7 @@
 //   DATABASE_URL  -> Neon connection string (POSTGRES_URL also accepted)
 //   ADMIN_PIN     -> passcode required to write
 //   AUTO_RESET_MINUTES -> revert to Closed after N min idle (default 30; 0 = off)
-//   SCHEDULE_ENABLED   -> auto open/close by the clock (default on; "false" disables)
-//   SCHEDULE_OPEN/CLOSE-> "HH:MM" local time (defaults 08:00 / 16:30)
-//   SCHEDULE_TZ        -> IANA timezone (default America/Chicago; handles DST)
-//   SCHEDULE_DAYS      -> business days, e.g. "1-5" = Mon–Fri (default)
-//   SCHEDULE_OPEN_STATUS -> status set at opening (default "ready")
+//   SCHEDULE_*         -> initial schedule defaults; Admin-saved hours then win
 //   (when scheduling is on it supersedes AUTO_RESET_MINUTES)
 // -----------------------------------------------------------------------------
 
@@ -28,6 +26,7 @@ const MESSAGE_MAX = 280;
 const NOTE_MAX = 120;
 const NAME_MAX = 40;
 const STATUSES = ["brewing", "ready", "empty", "cleaning", "closed", "beans_low", "maintenance"];
+const OPEN_STATUSES = STATUSES.filter((status) => status !== "closed");
 const MANAGER_STATES = ["available", "meeting", "heads_down", "out"];
 const ORDER_FLOW = ["queued", "making", "ready"]; // advancing past "ready" serves (removes) it
 // Auto-reset: if the coffee status goes untouched this long, revert to Closed so
@@ -39,40 +38,98 @@ const AUTO_RESET_MS =
 // Scheduled open/close: outside business hours the board is forced to Closed, and
 // at opening it flips back to an "open" status. Read-time + IANA timezone, so it's
 // DST-correct with no cron. When enabled it supersedes the idle auto-reset above.
+const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const SCHEDULE_CFG = buildScheduleConfig();
-function buildScheduleConfig() {
-  const parseHM = (s, def) => {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || "").trim());
-    if (!m) return def;
-    const h = Number(m[1]);
-    const mi = Number(m[2]);
-    return h <= 23 && mi <= 59 ? h * 60 + mi : def;
-  };
-  const parseDays = (s) => {
-    const str = String(s || "").trim();
-    if (!str) return new Set([1, 2, 3, 4, 5]);
-    const set = new Set();
-    for (const part of str.split(",")) {
-      const r = part.split("-").map((x) => Number(x.trim()));
-      if (r.length === 2 && Number.isInteger(r[0]) && Number.isInteger(r[1])) {
-        for (let d = r[0]; d <= r[1]; d++) set.add(((d % 7) + 7) % 7);
-      } else if (r.length === 1 && Number.isInteger(r[0])) {
-        set.add(((r[0] % 7) + 7) % 7);
-      }
+
+function normalizeTime(value, fallback = null) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return fallback;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return fallback;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function timeMinutes(value) {
+  const normalized = normalizeTime(value);
+  if (!normalized) return null;
+  const [hour, minute] = normalized.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function parseDays(value, fallback = DEFAULT_DAYS) {
+  if (Array.isArray(value)) {
+    const days = [...new Set(value.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))];
+    return days.length ? days.sort((a, b) => a - b) : [...fallback];
+  }
+
+  const str = String(value || "").trim();
+  if (!str) return [...fallback];
+  const days = new Set();
+  for (const part of str.split(",")) {
+    const range = part.split("-").map((item) => Number(item.trim()));
+    if (range.length === 2 && Number.isInteger(range[0]) && Number.isInteger(range[1])) {
+      for (let day = range[0]; day <= range[1]; day++) days.add(((day % 7) + 7) % 7);
+    } else if (range.length === 1 && Number.isInteger(range[0])) {
+      days.add(((range[0] % 7) + 7) % 7);
     }
-    return set.size ? set : new Set([1, 2, 3, 4, 5]);
-  };
+  }
+  return days.size ? [...days].sort((a, b) => a - b) : [...fallback];
+}
+
+function validTimezone(value) {
+  const timezone = String(value || "").trim().slice(0, 64);
+  if (!timezone) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+    return timezone;
+  } catch {
+    return null;
+  }
+}
+
+function buildScheduleConfig() {
   const openStatus = process.env.SCHEDULE_OPEN_STATUS;
   return {
     enabled: !/^(0|false|off|no)$/i.test(process.env.SCHEDULE_ENABLED || ""),
-    tz: process.env.SCHEDULE_TZ || "America/Chicago",
-    open: parseHM(process.env.SCHEDULE_OPEN, 8 * 60), // 08:00
-    close: parseHM(process.env.SCHEDULE_CLOSE, 16 * 60 + 30), // 16:30
-    days: parseDays(process.env.SCHEDULE_DAYS), // Mon–Fri
-    openStatus: ["brewing", "ready", "empty", "cleaning", "beans_low", "maintenance"].includes(openStatus)
-      ? openStatus
-      : "ready",
+    tz: validTimezone(process.env.SCHEDULE_TZ) || "America/Chicago",
+    open: normalizeTime(process.env.SCHEDULE_OPEN, "08:00"),
+    close: normalizeTime(process.env.SCHEDULE_CLOSE, "16:30"),
+    days: parseDays(process.env.SCHEDULE_DAYS),
+    openStatus: OPEN_STATUSES.includes(openStatus) ? openStatus : "ready",
+    updatedAt: null,
   };
+}
+
+function scheduleFromRow(row) {
+  if (!row) return { ...SCHEDULE_CFG, days: [...SCHEDULE_CFG.days] };
+  return {
+    enabled: row.schedule_enabled == null ? SCHEDULE_CFG.enabled : row.schedule_enabled !== false,
+    tz: validTimezone(row.schedule_tz) || SCHEDULE_CFG.tz,
+    open: normalizeTime(row.schedule_open, SCHEDULE_CFG.open),
+    close: normalizeTime(row.schedule_close, SCHEDULE_CFG.close),
+    days: parseDays(row.schedule_days, SCHEDULE_CFG.days),
+    openStatus: OPEN_STATUSES.includes(row.schedule_open_status)
+      ? row.schedule_open_status
+      : SCHEDULE_CFG.openStatus,
+    updatedAt: row.schedule_updated_at == null ? null : Number(row.schedule_updated_at),
+  };
+}
+
+function validateSchedule(raw) {
+  if (!raw || typeof raw !== "object" || typeof raw.enabled !== "boolean") return null;
+  const open = normalizeTime(raw.open);
+  const close = normalizeTime(raw.close);
+  const tz = validTimezone(raw.tz);
+  const validDays =
+    Array.isArray(raw.days) &&
+    raw.days.length > 0 &&
+    raw.days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+  const days = validDays ? [...new Set(raw.days)].sort((a, b) => a - b) : [];
+  const openStatus = OPEN_STATUSES.includes(raw.openStatus) ? raw.openStatus : null;
+  if (!open || !close || !tz || !days.length || !openStatus) return null;
+  if (timeMinutes(open) >= timeMinutes(close)) return null;
+  return { enabled: raw.enabled, tz, open, close, days, openStatus };
 }
 
 const WEEKDAY = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -100,14 +157,18 @@ function tzInfo(epochMs, tz) {
 export function scheduleDecision(state, nowEpoch, cfg) {
   if (!cfg.enabled) return null;
   const now = tzInfo(nowEpoch, cfg.tz);
-  const isOpen = cfg.days.has(now.day) && now.mins >= cfg.open && now.mins < cfg.close;
+  const open = typeof cfg.open === "number" ? cfg.open : timeMinutes(cfg.open);
+  const close = typeof cfg.close === "number" ? cfg.close : timeMinutes(cfg.close);
+  if (open == null || close == null) return null;
+  const days = cfg.days instanceof Set ? cfg.days : new Set(Array.isArray(cfg.days) ? cfg.days : []);
+  const isOpen = days.has(now.day) && now.mins >= open && now.mins < close;
   if (!isOpen) {
     return state.status !== "closed" ? { status: "closed" } : null;
   }
   if (state.status === "closed") {
     const upd = state.updatedAt ? tzInfo(state.updatedAt, cfg.tz) : null;
     const closedBeforeOpen =
-      !upd || upd.date < now.date || (upd.date === now.date && upd.mins < cfg.open);
+      !upd || upd.date < now.date || (upd.date === now.date && upd.mins < open);
     if (closedBeforeOpen) return { status: cfg.openStatus };
   }
   return null;
@@ -137,6 +198,15 @@ async function ensureTable(db) {
   await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_state text`;
   await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_note text`;
   await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS manager_updated_at bigint`;
+  // Admin-editable operating hours. Environment variables remain the defaults
+  // until these nullable columns are saved for the first time.
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS schedule_enabled boolean`;
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS schedule_open text`;
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS schedule_close text`;
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS schedule_tz text`;
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS schedule_days text`;
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS schedule_open_status text`;
+  await db`ALTER TABLE coffee_state ADD COLUMN IF NOT EXISTS schedule_updated_at bigint`;
   // Order queue (names only) — a separate table since it's a list, not a singleton.
   await db`CREATE TABLE IF NOT EXISTS coffee_orders (
     id bigserial PRIMARY KEY,
@@ -166,7 +236,9 @@ async function readOrders(db) {
 async function readState(db) {
   await ensureTable(db);
   const rows = await db`SELECT status, message, updated_at,
-                               manager_state, manager_note, manager_updated_at
+                               manager_state, manager_note, manager_updated_at,
+                               schedule_enabled, schedule_open, schedule_close, schedule_tz,
+                               schedule_days, schedule_open_status, schedule_updated_at
                         FROM coffee_state WHERE id = 1`;
   const base = rows.length
     ? {
@@ -179,8 +251,13 @@ async function readState(db) {
           updatedAt:
             rows[0].manager_updated_at == null ? null : Number(rows[0].manager_updated_at),
         },
+        schedule: scheduleFromRow(rows[0]),
       }
-    : { ...DEFAULT_STATE, manager: { ...DEFAULT_MANAGER } };
+    : {
+        ...DEFAULT_STATE,
+        manager: { ...DEFAULT_MANAGER },
+        schedule: { ...SCHEDULE_CFG, days: [...SCHEDULE_CFG.days] },
+      };
   base.orders = await readOrders(db);
   return base;
 }
@@ -198,7 +275,7 @@ async function maybeAutoReset(db, state) {
 // Apply the open/close schedule (force Closed off-hours; open at the start of the
 // business day). Runs read-time; returns the (possibly re-read) state.
 async function applySchedule(db, state) {
-  const decision = scheduleDecision(state, Date.now(), SCHEDULE_CFG);
+  const decision = scheduleDecision(state, Date.now(), state.schedule || SCHEDULE_CFG);
   if (!decision) return state;
   await writeCoffee(db, decision.status, "");
   return readState(db);
@@ -224,6 +301,28 @@ async function writeManager(db, state, note) {
              SET manager_state = EXCLUDED.manager_state,
                  manager_note = EXCLUDED.manager_note,
                  manager_updated_at = EXCLUDED.manager_updated_at`;
+}
+
+async function writeSchedule(db, schedule) {
+  await ensureTable(db);
+  const updatedAt = Date.now();
+  const days = schedule.days.join(",");
+  await db`INSERT INTO coffee_state (
+             id, status, message, schedule_enabled, schedule_open, schedule_close,
+             schedule_tz, schedule_days, schedule_open_status, schedule_updated_at
+           )
+           VALUES (
+             1, ${DEFAULT_STATE.status}, ${""}, ${schedule.enabled}, ${schedule.open},
+             ${schedule.close}, ${schedule.tz}, ${days}, ${schedule.openStatus}, ${updatedAt}
+           )
+           ON CONFLICT (id) DO UPDATE
+             SET schedule_enabled = EXCLUDED.schedule_enabled,
+                 schedule_open = EXCLUDED.schedule_open,
+                 schedule_close = EXCLUDED.schedule_close,
+                 schedule_tz = EXCLUDED.schedule_tz,
+                 schedule_days = EXCLUDED.schedule_days,
+                 schedule_open_status = EXCLUDED.schedule_open_status,
+                 schedule_updated_at = EXCLUDED.schedule_updated_at`;
 }
 
 async function addOrder(db, name, item) {
@@ -312,7 +411,7 @@ export async function handle(req, res, db) {
     try {
       let state = await readState(db);
       // Scheduling owns open/close when enabled; otherwise the idle auto-reset does.
-      state = SCHEDULE_CFG.enabled ? await applySchedule(db, state) : await maybeAutoReset(db, state);
+      state = state.schedule.enabled ? await applySchedule(db, state) : await maybeAutoReset(db, state);
       return send(res, 200, state);
     } catch (err) {
       console.error("[api] DB read failed:", err);
@@ -383,12 +482,18 @@ export async function handle(req, res, db) {
         }
         const note = String(body.manager.note || "").trim().slice(0, NOTE_MAX);
         await writeManager(db, body.manager.state, note);
+      } else if (body.schedule) {
+        const schedule = validateSchedule(body.schedule);
+        if (!schedule) return send(res, 400, { error: "bad_schedule" });
+        await writeSchedule(db, schedule);
       } else {
         if (!STATUSES.includes(body.status)) return send(res, 400, { error: "bad_status" });
         const message = String(body.message || "").trim().slice(0, MESSAGE_MAX);
         await writeCoffee(db, body.status, message);
       }
-      return send(res, 200, await readState(db));
+      let state = await readState(db);
+      if (body.schedule && state.schedule.enabled) state = await applySchedule(db, state);
+      return send(res, 200, state);
     } catch (err) {
       console.error("[api] DB write failed:", err);
       return send(res, 502, { error: "db_write_failed" });

@@ -100,11 +100,11 @@ retiring the second Vercel project.
 | `DATABASE_URL`                    | yes      | Neon connection string (added automatically by Storage)  |
 | `ADMIN_PIN`                       | yes      | Passcode required for all admin writes                   |
 | `AUTO_RESET_MINUTES`              | no       | Revert the status to Closed after this many idle minutes (default `30`; `0` = off). Ignored when scheduling is on |
-| `SCHEDULE_ENABLED`                | no       | Auto open/close by the clock — **on by default** (`false` disables). Supersedes `AUTO_RESET_MINUTES` |
-| `SCHEDULE_OPEN` / `SCHEDULE_CLOSE`| no       | Local open/close `HH:MM` (defaults `08:00` / `16:30`) |
-| `SCHEDULE_TZ`                     | no       | IANA timezone (default `America/Chicago`; handles DST automatically) |
-| `SCHEDULE_DAYS`                   | no       | Business days, e.g. `1-5` = Mon–Fri (default) |
-| `SCHEDULE_OPEN_STATUS`            | no       | Status set at opening (default `ready`) |
+| `SCHEDULE_ENABLED`                | no       | Initial auto-schedule default — **on by default** (`false` disables) |
+| `SCHEDULE_OPEN` / `SCHEDULE_CLOSE`| no       | Initial local hours (defaults `08:00` / `16:30`) |
+| `SCHEDULE_TZ`                     | no       | Initial IANA timezone (default `America/Chicago`; DST-aware) |
+| `SCHEDULE_DAYS`                   | no       | Initial business days, e.g. `1-5` = Mon–Fri (default) |
+| `SCHEDULE_OPEN_STATUS`            | no       | Initial status set at opening (default `ready`) |
 | `TIP_VENMO`                       | no       | Venmo username — shows a "Tip on Venmo" button/QR on /order |
 | `TIP_STRIPE_URL`                  | no       | A Stripe Payment Link URL — shows a "Tip with card" button/QR |
 | `TIP_CRYPTO_ADDRESS`              | no       | Wallet address — shows a tip QR + copyable address (`TIP_CRYPTO_LABEL`, `TIP_CRYPTO_URI` optional) |
@@ -112,6 +112,9 @@ retiring the second Vercel project.
 `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` are also accepted. No secrets ever live
 in the repo. Visitor ordering requires no account: the visitor enters a display
 name, chooses an item, and the order appears in the shared queue.
+
+The `SCHEDULE_*` variables seed the defaults for a new database. Once hours are
+saved from the PIN-protected Admin page, the saved database values take priority.
 
 ---
 
@@ -137,9 +140,10 @@ manager isn't free, plus the **order queue** — a newly-Ready order triggers a
 full-screen flash and a chime (**🔔** toggles the sound). A **QR code** in the
 corner lets people scan to open/install the app on their phone. The board runs on
 a **schedule** (default 08:00–16:30 Central, Mon–Fri): it forces **Closed** outside
-those hours and opens itself in the morning, so it never lies overnight — tune via
-the `SCHEDULE_*` vars, or set `SCHEDULE_ENABLED=false` to fall back to the idle
-`AUTO_RESET_MINUTES` behavior. Updates live; no refresh. Tap **⛶** for full-screen
+those hours and opens itself in the morning, so it never lies overnight. Staff can
+set the days, times, timezone, opening status, or disable automatic hours from
+the Admin page. When disabled, `AUTO_RESET_MINUTES` handles stale status instead.
+Updates live; no refresh. Tap **⛶** for full-screen
 (it also keeps the screen awake where supported).
 
 **Admin (`/admin`)**
@@ -149,6 +153,8 @@ the `SCHEDULE_*` vars, or set `SCHEDULE_ENABLED=false` to fall back to the idle
 - The **Optional message** overrides the status's default note (leave blank to
   use the default — the placeholder shows what that'll be).
 - **Update message only** changes the note without changing the status.
+- **Hours of operation:** set the open days, opening and closing times, timezone,
+  and opening status, or turn the automatic schedule off.
 - **Manager — Joe:** set Available / In a meeting / Heads-down / Out, with an
   optional "back ~2:30" note (shown as a badge on the board).
 - **Orders:** add a name to the queue, then advance it Queued → Making → Ready

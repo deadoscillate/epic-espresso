@@ -4,11 +4,12 @@
 // The pages only ever talk to this interface:
 //
 //   const store = createCoffeeStore();
-//   store.onChange(state => { ... });   // { status, message, updatedAt, manager, orders }
+//   store.onChange(state => { ... });   // { status, message, updatedAt, manager, schedule, orders }
 //   store.onConnection(conn => { ... }); // { online, mode, label }
 //   await store.verifyPin(pin);          // admin gate -> boolean
 //   await store.setStatus({ status, message, pin });
 //   await store.setManager({ state, note, pin });   // "Joe is in a meeting"
+//   await store.setSchedule({ enabled, tz, open, close, days, openStatus, pin });
 //   await store.addOrder({ name, item });           // guest order creation
 //   await store.advanceOrder({ id, pin });          // Queued → Making → Ready → served
 //   await store.removeOrder({ id, pin });
@@ -28,11 +29,21 @@ const MESSAGE_MAX = 280;
 const NOTE_MAX = 120;
 const NAME_MAX = 40;
 const DEFAULT_MANAGER = { state: "available", note: "", updatedAt: null };
+const DEFAULT_SCHEDULE = {
+  enabled: true,
+  tz: "America/Chicago",
+  open: "08:00",
+  close: "16:30",
+  days: [1, 2, 3, 4, 5],
+  openStatus: "ready",
+  updatedAt: null,
+};
 const DEFAULT_STATE = {
   status: DEFAULT_STATUS_ID,
   message: "",
   updatedAt: null,
   manager: { ...DEFAULT_MANAGER },
+  schedule: { ...DEFAULT_SCHEDULE, days: [...DEFAULT_SCHEDULE.days] },
   orders: [],
 };
 
@@ -67,15 +78,43 @@ function sanitizeOrders(arr) {
     .filter((o) => o.name);
 }
 
+function sanitizeSchedule(schedule) {
+  if (!schedule || typeof schedule !== "object") {
+    return { ...DEFAULT_SCHEDULE, days: [...DEFAULT_SCHEDULE.days] };
+  }
+  const days = Array.isArray(schedule.days)
+    ? [...new Set(schedule.days.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort(
+        (a, b) => a - b
+      )
+    : [];
+  return {
+    enabled: typeof schedule.enabled === "boolean" ? schedule.enabled : DEFAULT_SCHEDULE.enabled,
+    tz: typeof schedule.tz === "string" && schedule.tz.trim() ? schedule.tz.trim().slice(0, 64) : DEFAULT_SCHEDULE.tz,
+    open: /^\d{2}:\d{2}$/.test(schedule.open) ? schedule.open : DEFAULT_SCHEDULE.open,
+    close: /^\d{2}:\d{2}$/.test(schedule.close) ? schedule.close : DEFAULT_SCHEDULE.close,
+    days: days.length ? days : [...DEFAULT_SCHEDULE.days],
+    openStatus: STATUSES[schedule.openStatus] && schedule.openStatus !== "closed"
+      ? schedule.openStatus
+      : DEFAULT_SCHEDULE.openStatus,
+    updatedAt: typeof schedule.updatedAt === "number" ? schedule.updatedAt : null,
+  };
+}
+
 function sanitize(raw) {
   if (!raw || typeof raw !== "object") {
-    return { ...DEFAULT_STATE, manager: { ...DEFAULT_MANAGER }, orders: [] };
+    return {
+      ...DEFAULT_STATE,
+      manager: { ...DEFAULT_MANAGER },
+      schedule: { ...DEFAULT_SCHEDULE, days: [...DEFAULT_SCHEDULE.days] },
+      orders: [],
+    };
   }
   return {
     status: STATUSES[raw.status] ? raw.status : DEFAULT_STATUS_ID,
     message: typeof raw.message === "string" ? raw.message.slice(0, MESSAGE_MAX) : "",
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : null,
     manager: sanitizeManager(raw.manager),
+    schedule: sanitizeSchedule(raw.schedule),
     orders: sanitizeOrders(raw.orders),
   };
 }
@@ -123,6 +162,13 @@ function sameState(a, b) {
     a.manager.state === b.manager.state &&
     a.manager.note === b.manager.note &&
     a.manager.updatedAt === b.manager.updatedAt &&
+    a.schedule.enabled === b.schedule.enabled &&
+    a.schedule.tz === b.schedule.tz &&
+    a.schedule.open === b.schedule.open &&
+    a.schedule.close === b.schedule.close &&
+    a.schedule.days.join(",") === b.schedule.days.join(",") &&
+    a.schedule.openStatus === b.schedule.openStatus &&
+    a.schedule.updatedAt === b.schedule.updatedAt &&
     ordersSig(a.orders) === ordersSig(b.orders)
   );
 }
@@ -131,7 +177,12 @@ export function createCoffeeStore() {
   const changeHandlers = new Set();
   const connHandlers = new Set();
 
-  let state = { ...DEFAULT_STATE };
+  let state = {
+    ...DEFAULT_STATE,
+    manager: { ...DEFAULT_MANAGER },
+    schedule: { ...DEFAULT_SCHEDULE, days: [...DEFAULT_SCHEDULE.days] },
+    orders: [],
+  };
   let hasData = false;
   let connection = { online: false, mode: "connecting", label: "Connecting…" };
 
@@ -229,7 +280,7 @@ export function createCoffeeStore() {
     load();
 
     applyWrite = async (payload) => {
-      // Merge the partial update into the current state (coffee / manager / orders).
+      // Merge the partial update into the current state (coffee / manager / schedule / orders).
       let next;
       let createdOrderId = null;
       if (payload.order) {
@@ -239,6 +290,8 @@ export function createCoffeeStore() {
         }
       } else if (payload.manager) {
         next = { ...state, manager: { ...payload.manager, updatedAt: Date.now() } };
+      } else if (payload.schedule) {
+        next = { ...state, schedule: { ...payload.schedule, updatedAt: Date.now() } };
       } else {
         next = { ...state, status: payload.status, message: payload.message, updatedAt: Date.now() };
       }
@@ -277,6 +330,13 @@ export function createCoffeeStore() {
 
     async setManager({ state: mState, note = "", pin }) {
       await applyWrite({ manager: { state: mState, note: String(note).trim().slice(0, NOTE_MAX) }, pin });
+    },
+
+    async setSchedule({ enabled, tz, open, close, days, openStatus, pin }) {
+      await applyWrite({
+        schedule: { enabled, tz, open, close, days, openStatus },
+        pin,
+      });
     },
 
     // name + item without a PIN = guest order; name + PIN = admin add. Returns
