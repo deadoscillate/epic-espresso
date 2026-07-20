@@ -34,6 +34,13 @@ const els = {
   managerNote: document.getElementById("manager-note"),
   managerNoteApply: document.getElementById("manager-note-apply"),
   managerCurrent: document.getElementById("manager-current"),
+  scheduleForm: document.getElementById("schedule-form"),
+  scheduleEnabled: document.getElementById("schedule-enabled"),
+  scheduleOpen: document.getElementById("schedule-open"),
+  scheduleClose: document.getElementById("schedule-close"),
+  scheduleTz: document.getElementById("schedule-tz"),
+  scheduleOpenStatus: document.getElementById("schedule-open-status"),
+  scheduleSummary: document.getElementById("schedule-summary"),
   orderAdd: document.getElementById("order-add"),
   orderName: document.getElementById("order-name"),
   orderAddBtn: document.getElementById("order-add-btn"),
@@ -54,6 +61,7 @@ const els = {
 let liveState = null;
 let messageTouched = false;
 let managerNoteTouched = false;
+let scheduleTouched = false;
 let busy = false;
 let unlocked = false;
 let needsPin = false;
@@ -76,6 +84,13 @@ for (const id of STATUS_ORDER) {
   btn.addEventListener("click", () => applyStatus(id));
   els.grid.appendChild(btn);
   buttons.set(id, btn);
+}
+
+for (const id of STATUS_ORDER.filter((statusId) => statusId !== "closed")) {
+  const option = document.createElement("option");
+  option.value = id;
+  option.textContent = STATUSES[id].label;
+  els.scheduleOpenStatus.appendChild(option);
 }
 
 // --- Manager (Joe) button grid ----------------------------------------------
@@ -111,6 +126,9 @@ function updateControls() {
   managerButtons.forEach((b) => (b.disabled = !enabled));
   els.applyMessage.disabled = !enabled || !liveState;
   els.managerNoteApply.disabled = !enabled || !liveState;
+  els.scheduleForm
+    .querySelectorAll("input, select, button")
+    .forEach((control) => (control.disabled = !enabled || !liveState));
   els.orderName.disabled = !enabled;
   els.orderAddBtn.disabled = !enabled;
   els.orderList.querySelectorAll("button").forEach((b) => (b.disabled = !enabled));
@@ -170,6 +188,90 @@ async function applyManagerNoteOnly() {
     showToast("Joe’s note updated.", "ok");
   } catch (err) {
     handleWriteError(err, "Couldn’t update the note.");
+  } finally {
+    busy = false;
+    updateControls();
+  }
+}
+
+// --- Hours of operation ----------------------------------------------------
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function displayTime(value) {
+  const [hour, minute] = String(value || "00:00").split(":").map(Number);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const shownHour = hour % 12 || 12;
+  return `${shownHour}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function renderSchedule(schedule) {
+  const current = schedule || {
+    enabled: true,
+    tz: "America/Chicago",
+    open: "08:00",
+    close: "16:30",
+    days: [1, 2, 3, 4, 5],
+    openStatus: "ready",
+  };
+  const days = Array.isArray(current.days) ? current.days : [];
+  if (!scheduleTouched) {
+    els.scheduleEnabled.checked = current.enabled;
+    els.scheduleOpen.value = current.open;
+    els.scheduleClose.value = current.close;
+    els.scheduleTz.value = current.tz;
+    els.scheduleOpenStatus.value = current.openStatus;
+    els.scheduleForm.querySelectorAll('input[name="schedule-day"]').forEach((checkbox) => {
+      checkbox.checked = days.includes(Number(checkbox.value));
+    });
+  }
+
+  if (!current.enabled) {
+    els.scheduleSummary.textContent = "Automatic hours are off.";
+    return;
+  }
+  const dayText = days.map((day) => DAY_LABELS[day]).join(", ");
+  els.scheduleSummary.textContent = `${dayText} · ${displayTime(current.open)}–${displayTime(
+    current.close
+  )} · ${current.tz}`;
+}
+
+async function saveSchedule(e) {
+  e.preventDefault();
+  if (!els.scheduleForm.reportValidity()) return;
+  const days = [...els.scheduleForm.querySelectorAll('input[name="schedule-day"]:checked')].map(
+    (checkbox) => Number(checkbox.value)
+  );
+  if (!days.length) {
+    showToast("Choose at least one open day.", "error");
+    return;
+  }
+  if (els.scheduleOpen.value >= els.scheduleClose.value) {
+    showToast("Opening time must be before closing time.", "error");
+    return;
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: els.scheduleTz.value.trim() }).format(new Date());
+  } catch {
+    showToast("Enter a valid IANA time zone, such as America/Chicago.", "error");
+    return;
+  }
+
+  busy = true;
+  updateControls();
+  try {
+    await store.setSchedule({
+      enabled: els.scheduleEnabled.checked,
+      open: els.scheduleOpen.value,
+      close: els.scheduleClose.value,
+      tz: els.scheduleTz.value.trim(),
+      days,
+      openStatus: els.scheduleOpenStatus.value,
+      pin,
+    });
+    scheduleTouched = false;
+    showToast("Hours of operation updated.", "ok");
+  } catch (err) {
+    handleWriteError(err, "Couldn’t update the hours.");
   } finally {
     busy = false;
     updateControls();
@@ -461,6 +563,10 @@ els.managerNote.addEventListener("keydown", (e) => {
 });
 els.managerNoteApply.addEventListener("click", applyManagerNoteOnly);
 els.applyMessage.addEventListener("click", applyMessageOnly);
+els.scheduleForm.addEventListener("input", () => {
+  scheduleTouched = true;
+});
+els.scheduleForm.addEventListener("submit", saveSchedule);
 els.orderAdd.addEventListener("submit", addOrder);
 els.invAdd.addEventListener("submit", invAdd);
 
@@ -506,6 +612,9 @@ function render(state) {
     ? `${mInfo.icon} ${mInfo.label} — ${manager.note}`
     : `${mInfo.icon} ${mInfo.label}`;
   if (!managerNoteTouched) els.managerNote.value = manager.note || "";
+
+  // Hours of operation
+  renderSchedule(state.schedule);
 
   // Orders
   renderOrders(state.orders || []);
